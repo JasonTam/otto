@@ -1,0 +1,507 @@
+name: "simple"
+
+########## [INPUT] ##########
+
+layer { name: "data"
+  include { phase: TRAIN }
+  type: "Data"
+  top: "data"
+  top: "label"
+  data_param {
+    source: "/media/raid_arr/data/otto/data/train_fold0"
+    backend: LEVELDB
+    #batch_size: 4096
+    batch_size: 8192
+    #batch_size: 16384
+  }
+  #transform_param { mean_value: 0 }
+}
+
+layer { name: "data_pl"
+  include { phase: TRAIN }
+  type: "Data"
+  top: "data_pl"
+  top: "label_pl_truth"
+  data_param {
+    #~ source: "/media/raid_arr/data/otto/data/test_fold0_copy"
+    source: "/media/raid_arr/data/otto/data/test_lvl"
+    backend: LEVELDB
+    #~ batch_size: 8192
+    batch_size: 16384
+  }
+  #transform_param { mean_value: 0 }
+}
+
+layer { name: "silencer"
+    include { phase: TRAIN }
+    type: "Silence"
+    bottom: "label_pl_truth"
+}
+
+layer { name: "data"
+  include { phase: TEST }
+  type: "Data"
+  top: "data"
+  top: "label"
+  data_param {
+    source: "/media/raid_arr/data/otto/data/test_fold0"
+    backend: LEVELDB
+    batch_size: 512
+  }
+  #transform_param { mean_value: 0 }
+}
+
+
+########## [AE] ##########
+
+layer { name: "encode1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "encode1"
+  param { name: "encode1_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode1_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+layer { name: "encode1neuron"
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode1"
+  top: "encode1neuron"
+}
+layer { name: "encode2"
+  type: "InnerProduct"
+  bottom: "encode1neuron"
+  top: "encode2"
+  param { name: "encode2_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode2_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 512
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer { name: "encode2neuron"
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode2"
+  top: "encode2neuron"
+}
+layer { name: "encode3"
+  type: "InnerProduct"
+  bottom: "encode2neuron"
+  top: "encode3"
+  param { name: "encode3_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode3_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 256
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer { name: "encode3neuron"
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode3"
+  top: "encode3neuron"
+}
+layer { name: "encode4"
+  type: "InnerProduct"
+  bottom: "encode3neuron"
+  top: "encode4"
+  param { name: "encode4_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode4_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 128
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+
+########## [NET] ##########
+
+layer { name: "fc1"
+  type: "InnerProduct"
+  #bottom: "data"
+  bottom: "encode4"
+  top: "fc1"
+  param { name: "fc1_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc1_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu1"
+  type: "ReLU"
+  bottom: "fc1"
+  top: "maxfc1"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+layer { name: "drop1"
+  type: "Dropout"
+  bottom: "maxfc1"
+  top: "maxfc1"
+  dropout_param {
+     dropout_ratio: 0.5
+  }
+}
+
+layer { name: "fc2"
+  type: "InnerProduct"
+  bottom: "maxfc1"
+  top: "fc2"
+  param { name: "fc2_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc2_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu2"
+  type: "ReLU"
+  bottom: "fc2"
+  top: "maxfc2"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+layer { name: "drop2"
+  type: "Dropout"
+  bottom: "maxfc2"
+  top: "maxfc2"
+  dropout_param {
+     dropout_ratio: 0.5
+  }
+}
+
+
+########## [AE_PL] #########
+
+layer { name: "encode1_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "data_pl"
+  top: "encode1_pl"
+  param { name: "encode1_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode1_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer { name: "encode1neuron_pl"
+  include { phase: TRAIN }
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode1_pl"
+  top: "encode1neuron_pl"
+}
+layer { name: "encode2_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "encode1neuron_pl"
+  top: "encode2_pl"
+  param { name: "encode2_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode2_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 512
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+layer { name: "encode2neuron_pl"
+  include { phase: TRAIN }
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode2_pl"
+  top: "encode2neuron_pl"
+}
+layer { name: "encode3_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "encode2neuron_pl"
+  top: "encode3_pl"
+  param { name: "encode3_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode3_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 256
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer { name: "encode3neuron_pl"
+  include { phase: TRAIN }
+  #type: "Sigmoid"
+  type: "ReLU"
+  bottom: "encode3_pl"
+  top: "encode3neuron_pl"
+}
+layer { name: "encode4_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "encode3neuron_pl"
+  top: "encode4_pl"
+  param { name: "encode4_w"
+    lr_mult: 0.0
+  }
+  param { name: "encode4_b"
+    lr_mult: 0.0
+  }
+  inner_product_param {
+    num_output: 128
+    weight_filler {
+      type: "gaussian"
+      std: 1
+      sparse: 15
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+
+
+
+########## [NET_PL] ##########
+layer { name: "fc1_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  #bottom: "data_pl"
+  bottom: "encode4_pl"
+  top: "fc1_pl"
+  param { name: "fc1_w"
+    lr_mult: 0.0  # No backprop
+  }
+  param { name: "fc1_b"
+    lr_mult: 0.0  # No backprop 
+  }
+  inner_product_param {
+    num_output: 1024
+  }
+}
+layer { name: "relu1_pl"
+  include { phase: TRAIN }
+  type: "ReLU"
+  bottom: "fc1_pl"
+  top: "maxfc1_pl"
+}
+
+layer { name: "fc2_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "maxfc1_pl"
+  top: "fc2_pl"
+  param { name: "fc2_w"
+    lr_mult: 0.0  # No backprop 
+  }
+  param { name: "fc2_b"
+    lr_mult: 0.0  # No backprop 
+  }
+  inner_product_param {
+    num_output: 1024
+  }
+}
+layer { name: "relu2_pl"
+  include { phase: TRAIN }
+  type: "ReLU"
+  bottom: "fc2_pl"
+  top: "maxfc2_pl"
+}
+
+### OUTPUT LAYERS
+
+layer { name: "fc_out"
+  type: "InnerProduct"
+  bottom: "maxfc2"
+  top: "fc_out"
+  param { name: "fc_out_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc_out_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 9
+    weight_filler {
+      type: "xavier"
+      std: 0.01
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+layer { name: "fc_out_pl"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "maxfc2_pl"
+  top: "fc_out_pl"
+  param {
+    name: "fc_out_w"
+    lr_mult: 0.0  # No backprop 
+  }
+  param {
+    name: "fc_out_b"
+    lr_mult: 0.0  # No backprop 
+  }
+  inner_product_param {
+    num_output: 9
+  }
+}
+
+layer { name: "accuracy"
+  include { phase: TEST }
+  type: "Accuracy"
+  bottom: "fc_out"
+  bottom: "label"
+  top: "accuracy"
+}
+
+layer { type: "SoftmaxWithLoss"
+  name: "loss"
+  bottom: "fc_out"
+  bottom: "label"
+  top: "loss"
+  loss_weight: 1.0
+}
+
+layer { name: "pseudo_label"
+  include { phase: TRAIN }
+  type: "ArgMax" 
+  bottom: "fc_out_pl"
+  top: "label_pl"
+}
+
+layer { name: "loss_pl"
+  include { phase: TRAIN }
+  type: "SoftmaxWithLoss"
+  bottom: "fc_out_pl"
+  bottom: "label_pl"
+  top: "loss_pl"
+  loss_weight: 0.75
+  #~ loss_weight: 1.00
+  #~ loss_weight: 2.00
+  #~ loss_weight: 3.00
+  #~ loss_weight: 0.50
+}
+
+

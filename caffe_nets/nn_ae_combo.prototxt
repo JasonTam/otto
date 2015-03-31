@@ -1,0 +1,293 @@
+name: "simple"
+
+########## [INPUT] ##########
+
+layer { name: "data"
+  include { phase: TRAIN }
+  type: "Data"
+  top: "data"
+  top: "label"
+  data_param {
+    source: "/media/raid_arr/data/otto/data/all0_lvl"
+    backend: LEVELDB
+    #batch_size: 4096
+    batch_size: 8192
+    #~ batch_size: 16384
+  }
+  #~ transform_param { 
+    #~ mean_value: 0
+    #~ scale: 0.0039215684
+  #~ }
+}
+
+layer { name: "data"
+  include { phase: TEST }
+  type: "Data"
+  top: "data"
+  top: "label"
+  data_param {
+    source: "/media/raid_arr/data/otto/data/test_fold0"
+    backend: LEVELDB
+    batch_size: 512
+  }
+  #~ transform_param { 
+    #~ mean_value: 0
+    #~ scale: 0.0039215684
+  #~ }
+}
+
+########## [NET] ##########
+
+layer { name: "fc1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "fc1"
+  param { name: "fc1_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc1_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 2048
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu1"
+  type: "ReLU"
+  bottom: "fc1"
+  top: "maxfc1"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+layer { name: "drop1"
+  type: "Dropout"
+  bottom: "maxfc1"
+  top: "maxfc1"
+  dropout_param {
+     dropout_ratio: 0.5
+  }
+}
+
+layer { name: "fc2"
+  type: "InnerProduct"
+  bottom: "maxfc1"
+  top: "fc2"
+  param { name: "fc2_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc2_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu2"
+  type: "ReLU"
+  bottom: "fc2"
+  top: "maxfc2"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+layer { name: "drop2"
+  type: "Dropout"
+  bottom: "maxfc2"
+  top: "maxfc2"
+  dropout_param {
+     dropout_ratio: 0.5
+  }
+}
+
+
+########### [LABEL STAGE] ############
+
+layer { name: "fc_out"
+  type: "InnerProduct"
+  bottom: "maxfc2"
+  top: "fc_out"
+  param { name: "fc_out_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc_out_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 9
+    weight_filler {
+      type: "xavier"
+      std: 0.01
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+layer { name: "accuracy"
+  include { phase: TEST }
+  type: "Accuracy"
+  bottom: "fc_out"
+  bottom: "label"
+  top: "accuracy"
+}
+
+layer { type: "SoftmaxWithLoss"
+  name: "loss"
+  bottom: "fc_out"
+  bottom: "label"
+  top: "loss"
+  loss_weight: 1.0
+  loss_param {
+    ignore_label: -1
+  }
+}
+
+
+########### [CONTINUE DECODING] ############
+
+layer { name: "fc2_dec"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "fc_out"
+  top: "fc2_dec"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu1_dec"
+  include { phase: TRAIN }
+  type: "ReLU"
+  bottom: "fc2_dec"
+  top: "fc2_dec"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+
+layer { name: "fc1_dec"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "fc2_dec"
+  top: "fc1_dec"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 2048
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu2_dec"
+  include { phase: TRAIN }
+  type: "ReLU"
+  bottom: "fc1_dec"
+  top: "fc1_dec"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+
+layer { name: "decode1"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  bottom: "fc1_dec"
+  top: "decode1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 96
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+
+##### Decode Score ######
+layer { name: "ae_loss"
+  include { phase: TRAIN }
+  type: "SigmoidCrossEntropyLoss"
+  bottom: "decode1"
+  bottom: "data"
+  top: "cross_entropy_loss"
+  loss_weight: 0.05
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

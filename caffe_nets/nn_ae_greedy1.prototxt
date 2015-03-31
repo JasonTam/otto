@@ -1,0 +1,136 @@
+name: "simple"
+
+########## [INPUT] ##########
+
+layer { name: "data"
+  include { phase: TRAIN }
+  type: "Data"
+  top: "data"
+  top: "label"
+  data_param {
+    source: "/media/raid_arr/data/otto/data/all0_lvl"
+    backend: LEVELDB
+    #batch_size: 4096
+    batch_size: 8192
+    #~ batch_size: 16384
+  }
+  #~ transform_param { 
+    #~ mean_value: 0
+    #~ scale: 0.0039215684
+  #~ }
+}
+
+########## [NET] ##########
+
+layer { name: "drop0"
+  type: "Dropout"
+  bottom: "data"
+  top: "data_d"
+  dropout_param {
+     dropout_ratio: 0.1
+  }
+}
+
+layer { name: "fc1"
+  type: "InnerProduct"
+  bottom: "data_d"
+  top: "fc1"
+  param { name: "fc1_w"
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param { name: "fc1_b"
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 1024
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+layer { name: "relu1"
+  type: "ReLU"
+  bottom: "fc1"
+  top: "maxfc1"
+  relu_param: {
+      negative_slope: 0.00
+  }
+}
+layer { name: "drop1"
+  type: "Dropout"
+  bottom: "maxfc1"
+  top: "maxfc1_d"
+  dropout_param {
+     dropout_ratio: 0.5
+  }
+}
+
+
+##### Decode Output ######
+
+layer { name: "decode1"
+  include { phase: TRAIN }
+  type: "InnerProduct"
+  #bottom: "fc1_dec"
+  bottom: "maxfc1_d"
+  top: "decode1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 96
+    weight_filler {
+      type: "xavier"
+      std: 0.005
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+  }
+}
+
+layer { name: "silencer"
+  include { phase: TRAIN }
+  type: "Silence"
+  bottom: "label"
+}
+
+
+##### Decode Score ######
+layer { name: "ae_loss"
+  include { phase: TRAIN }
+  type: "SigmoidCrossEntropyLoss"
+  bottom: "decode1"
+  bottom: "data"
+  top: "cross_entropy_loss"
+  loss_weight: 1.0
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

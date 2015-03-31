@@ -1,0 +1,17 @@
+net: "/afs/ee.cooper.edu/user/t/a/tam8/documents/otto/caffe_nets/nn_pl_full_test_maxout.prototxt"
+test_iter: 25
+test_interval: 100
+test_initialization: false
+display: 50
+average_loss: 50
+base_lr: 0.05
+lr_policy: "step"
+max_iter: 75000
+gamma: 0.1
+momentum: 0.5
+stepsize: 5000
+weight_decay: 0.0002
+snapshot: 1000
+snapshot_prefix: "/media/raid_arr/data/otto/models/simple_fold0"
+solver_mode: GPU
+solver_type: NESTEROV
