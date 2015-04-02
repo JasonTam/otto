@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
-%matplotlib inline
 
-import io_tools as iot
+import src.io_tools as iot
+import src.transformers as tform
 import os
 import numpy as np
 from time import time
@@ -49,23 +49,7 @@ labels_fold_val = labels_train[val_ind]
 
 # -------------------------------------------------------------------------------------
 
-pipe = make_pipeline(
-                    TfidfTransformer(norm=u'l2',
-                                      use_idf=True,
-                                      smooth_idf=True,
-                                      sublinear_tf=True),
-                     DenseTformer(),
-                     make_union(
-                                IdentityTformer(),
-#                                 FactorAnalysis(n_components=74),
-#                                 PCA(n_components=20, whiten=True),
-                                NzTformer(),
-                                NzvarTformer(),
-                                NzmeanTformer(),
-                     ),
-                     StandardScaler(),
-#                      MinMaxScaler(),
-                     )
+pipe = tform.pipe
 pipe.fit(np.r_[feats_train[train_ind, :], feats_test])
 
 # -------------------------------------------------------------------------------------

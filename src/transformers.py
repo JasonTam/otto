@@ -31,29 +31,45 @@ class DenseTformer(FitlessMixin):
 
 class LogTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
-        return np.log(X+1)
+        return np.log(X + 1)
 
 
 class NzTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
-        return np.apply_along_axis(func1d=np.count_nonzero, 
+        return np.apply_along_axis(func1d=np.count_nonzero,
                                    axis=1, arr=X)[:, None]
 
 
 class NzvarTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
-        ret = np.apply_along_axis(func1d=lambda r: np.var(r[np.nonzero(r)]), 
-                                   axis=1, arr=X)[:, None]
+        ret = np.apply_along_axis(func1d=lambda r: np.var(r[np.nonzero(r)]),
+                                  axis=1, arr=X)[:, None]
         ret[np.isnan(ret)] = 0
         return ret
 
 
 class NzmeanTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
-        ret = np.apply_along_axis(func1d=lambda r: np.mean(r[np.nonzero(r)]), 
-                                   axis=1, arr=X)[:, None]
+        ret = np.apply_along_axis(func1d=lambda r: np.mean(r[np.nonzero(r)]),
+                                  axis=1, arr=X)[:, None]
         ret[np.isnan(ret)] = 0
         return ret
- 
 
-    
+
+pipe = make_pipeline(
+    TfidfTransformer(norm=u'l2',
+                     use_idf=True,
+                     smooth_idf=True,
+                     sublinear_tf=True),
+    DenseTformer(),
+    make_union(
+        IdentityTformer(),
+        # FactorAnalysis(n_components=74),
+        # PCA(n_components=20, whiten=True),
+        NzTformer(),
+        NzvarTformer(),
+        NzmeanTformer(),
+    ),
+    StandardScaler(),
+    # MinMaxScaler(),
+)
