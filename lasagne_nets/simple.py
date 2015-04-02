@@ -1,46 +1,116 @@
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+import io_tools as iot
+import os
+import numpy as np
+from time import time
+import sys
+
+from sklearn.cross_validation import StratifiedKFold
+
+# DATA_DIR = iot.DATA_DIR
+DATA_DIR = '/media/raid_arr/data/otto/data/'
+DB_OUT_TRAIN = os.path.join(DATA_DIR, 'train_lvl')
+DB_OUT_TEST = os.path.join(DATA_DIR, 'test_lvl')
+DB_OUT_ALL = os.path.join(DATA_DIR, 'all_lvl')
+DB_OUT_ALL0 = os.path.join(DATA_DIR, 'all0_lvl')
+
+# -------------------------------------------------------------------------------------
+
+try:
+    ids_train, feats_train, labels_train
+except NameError:
+    ids_train = np.load(os.path.join(iot.DATA_DIR, 'train_ids.npy'))
+    feats_train = np.load(os.path.join(iot.DATA_DIR, 'train_feats.npy')).astype(float)
+    labels_train = np.load(os.path.join(iot.DATA_DIR, 'train_labels_enc.npy'))
+
+try:
+    ids_test, feats_test
+except NameError:
+    ids_test = np.load(os.path.join(iot.DATA_DIR, 'test_ids.npy'))
+    feats_test = np.load(os.path.join(iot.DATA_DIR, 'test_feats.npy')).astype(float)
+
+skf = StratifiedKFold(labels_train, n_folds=5, shuffle=True)
+# All
+feats_all = np.r_[feats_train, feats_test]
+labels_all = np.r_[labels_train, -1*np.ones(len(ids_test))].astype(int)
+
+# All minus test0
+train_ind, val_ind = iter(skf).next()
+feats_all0 = np.r_[feats_train[train_ind, :], feats_test]
+labels_all0 = np.r_[labels_train[train_ind], -1*np.ones(len(ids_test))].astype(int)
+
+
+feats_fold_train = feats_train[train_ind, :]
+labels_fold_train = labels_train[train_ind]
+feats_fold_val = feats_train[val_ind, :]
+labels_fold_val = labels_train[val_ind]
+
+# -------------------------------------------------------------------------------------
+
+pipe = make_pipeline(
+                    TfidfTransformer(norm=u'l2',
+                                      use_idf=True,
+                                      smooth_idf=True,
+                                      sublinear_tf=True),
+                     DenseTformer(),
+                     make_union(
+                                IdentityTformer(),
+#                                 FactorAnalysis(n_components=74),
+#                                 PCA(n_components=20, whiten=True),
+                                NzTformer(),
+                                NzvarTformer(),
+                                NzmeanTformer(),
+                     ),
+                     StandardScaler(),
+#                      MinMaxScaler(),
+                     )
+pipe.fit(np.r_[feats_train[train_ind, :], feats_test])
+
+# -------------------------------------------------------------------------------------
+
+X_train = pipe.transform(feats_fold_train)
+y_train = labels_fold_train
+
+X_valid = pipe.transform(feats_fold_val)
+y_valid = labels_fold_val
+
+X_test = pipe.transform(feats_test)
+y_test = -1*np.ones(len(feats_test), dtype=int)
+
+
+def _load_data():
+#     X_train = pipe.transform(feats_fold_train)
+    y_train = labels_fold_train
+#     X_valid = pipe.transform(feats_fold_val)
+    y_valid = labels_fold_val
+#     X_test = pipe.transform(feats_test)
+    y_test = -1*np.ones(len(feats_test), dtype=int)
+
+    data = ((X_train, y_train),
+            (X_valid, y_valid),
+            (X_test, y_test))
+    return data
+
+# -------------------------------------------------------------------------------------
 from __future__ import print_function
 
-import gzip
 import itertools
 import pickle
-import os
 import sys
 import numpy as np
 import lasagne
 import theano
 import theano.tensor as T
 import time
+from lasagne_nets import net_zoo
 
-PY2 = sys.version_info[0] == 2
-
-if PY2:
-    from urllib import urlretrieve
-
-    def pickle_load(f, encoding):
-        return pickle.load(f)
-else:
-    from urllib.request import urlretrieve
-
-    def pickle_load(f, encoding):
-        return pickle.load(f, encoding=encoding)
-
-DATA_URL = 'http://deeplearning.net/data/mnist/mnist.pkl.gz'
-DATA_FILENAME = 'mnist.pkl.gz'
-
-NUM_EPOCHS = 500
-BATCH_SIZE = 600
-NUM_HIDDEN_UNITS = 512
+NUM_EPOCHS = 5000
+BATCH_SIZE = 2048
+NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
-
-
-def _load_data(url=DATA_URL, filename=DATA_FILENAME):
-    if not os.path.exists(filename):
-        print("Downloading MNIST")
-        urlretrieve(url, filename)
-
-    with gzip.open(filename, 'rb') as f:
-        return pickle_load(f, encoding='latin-1')
 
 
 def load_data():
@@ -60,40 +130,8 @@ def load_data():
         num_examples_valid=X_valid.shape[0],
         num_examples_test=X_test.shape[0],
         input_dim=X_train.shape[1],
-        output_dim=10,
+        output_dim=len(np.unique(y_train)),
     )
-
-
-def build_model(input_dim, output_dim,
-                batch_size=BATCH_SIZE, num_hidden_units=NUM_HIDDEN_UNITS):
-
-    l_in = lasagne.layers.InputLayer(
-        shape=(batch_size, input_dim),
-    )
-    l_hidden1 = lasagne.layers.DenseLayer(
-        l_in,
-        num_units=num_hidden_units,
-        nonlinearity=lasagne.nonlinearities.rectify,
-    )
-    l_hidden1_dropout = lasagne.layers.DropoutLayer(
-        l_hidden1,
-        p=0.5,
-    )
-    l_hidden2 = lasagne.layers.DenseLayer(
-        l_hidden1_dropout,
-        num_units=num_hidden_units,
-        nonlinearity=lasagne.nonlinearities.rectify,
-    )
-    l_hidden2_dropout = lasagne.layers.DropoutLayer(
-        l_hidden2,
-        p=0.5,
-    )
-    l_out = lasagne.layers.DenseLayer(
-        l_hidden2_dropout,
-        num_units=output_dim,
-        nonlinearity=lasagne.nonlinearities.softmax,
-    )
-    return l_out
 
 
 def create_iter_functions(dataset, output_layer,
@@ -183,14 +221,16 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
         }
 
 
-def main(num_epochs=NUM_EPOCHS):
+def main(num_epochs=NUM_EPOCHS, verbose=True):
     print("Loading data...")
     dataset = load_data()
 
     print("Building model and compiling functions...")
-    output_layer = build_model(
+    output_layer = net_zoo.build_vanilla(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
+        batch_size=BATCH_SIZE,
+        num_hidden_units=NUM_HIDDEN_UNITS,
     )
     iter_funcs = create_iter_functions(dataset, output_layer)
 
@@ -198,14 +238,18 @@ def main(num_epochs=NUM_EPOCHS):
     now = time.time()
     try:
         for epoch in train(iter_funcs, dataset):
-            print("Epoch {} of {} took {:.3f}s".format(
-                epoch['number'], num_epochs, time.time() - now))
-            now = time.time()
-            print("  training loss:\t\t{:.6f}".format(epoch['train_loss']))
-            print("  validation loss:\t\t{:.6f}".format(epoch['valid_loss']))
-            print("  validation accuracy:\t\t{:.2f} %%".format(
-                epoch['valid_accuracy'] * 100))
-
+            if verbose:
+                if (epoch['number']-1) % 10 == 0:
+                    print("Epoch {} of {} took {:.3f}s".format(
+                        epoch['number'], num_epochs, time.time() - now))
+                    now = time.time()
+                    print("  training loss:\t\t{:.6f}".format(epoch['train_loss']))
+                    print("  validation loss:\t\t{:.6f}".format(epoch['valid_loss']))
+                    print("  validation accuracy:\t\t{:.2f} %%".format(
+                        epoch['valid_accuracy'] * 100))
+                    sys.stdout.flush()
+            else:
+                pass
             if epoch['number'] >= num_epochs:
                 break
 
@@ -215,5 +259,26 @@ def main(num_epochs=NUM_EPOCHS):
     return output_layer
 
 
-if __name__ == '__main__':
-    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
