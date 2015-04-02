@@ -278,12 +278,13 @@ def main(num_epochs=NUM_EPOCHS, verbose=True):
         batch_size=BATCH_SIZE,
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
-    iter_funcs = create_iter_functions(dataset, output_layer)
+    # iter_funcs = create_iter_functions(dataset, output_layer)
 
     print("Starting training...")
     now = time.time()
     try:
-        for epoch in train(iter_funcs, dataset):
+        # for epoch in train(iter_funcs, dataset):
+        for epoch in cotrain(output_layer, dataset):
             if verbose:
                 if (epoch['number']-1) % 10 == 0:
                     print("Epoch {} of {} took {:.3f}s".format(
