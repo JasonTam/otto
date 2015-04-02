@@ -91,8 +91,7 @@ import time
 from lasagne_nets import net_zoo
 
 NUM_EPOCHS = 5000
-BATCH_SIZE_TRAIN = 2048
-BATCH_SIZE_TEST = 2048
+BATCH_SIZE = 2048
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
@@ -121,7 +120,7 @@ def load_data():
 
 def create_iter_functions(dataset, output_layer,
                           X_tensor_type=T.matrix,
-                          batch_size=BATCH_SIZE_TRAIN,
+                          batch_size=BATCH_SIZE,
                           learning_rate=LEARNING_RATE, momentum=MOMENTUM):
     batch_index = T.iscalar('batch_index')
     X_batch = X_tensor_type('x')
@@ -150,19 +149,25 @@ def create_iter_functions(dataset, output_layer,
     winner_x = X_batch[winner_ind, :]
     winner_y = T.argmax(softmax_out[winner_ind, :])
 
-
-    # Paramter updating
+    # Parameter updating
     all_params = lasagne.layers.get_all_params(output_layer)
     updates = lasagne.updates.nesterov_momentum(
         loss_train, all_params, learning_rate, momentum)
 
     iter_train = theano.function(
-        # [batch_index], loss_train,
-        [batch_index], [loss_train, winner_x, winner_y],
+        [batch_index], loss_train,
         updates=updates,
         givens={
             X_batch: dataset['X_train'][batch_slice],
             y_batch: dataset['y_train'][batch_slice],
+        },
+    )
+
+    iter_cotrain = theano.function(
+        [batch_index], [winner_x, winner_y],
+        givens={
+            X_batch: dataset['X_test'][batch_slice],
+            y_batch: dataset['y_test'][batch_slice],
         },
     )
 
@@ -184,12 +189,13 @@ def create_iter_functions(dataset, output_layer,
 
     return dict(
         train=iter_train,
+        cotrain=iter_cotrain,
         valid=iter_valid,
         test=iter_test,
     )
 
 
-def train(iter_funcs, dataset, batch_size=BATCH_SIZE_TRAIN):
+def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
     num_batches_train = dataset['num_examples_train'] // batch_size
     num_batches_valid = dataset['num_examples_valid'] // batch_size
 
@@ -197,11 +203,49 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE_TRAIN):
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
-            # batch_train_loss = iter_funcs['train'](b)
-            batch_train_loss, win_x, win_y = iter_funcs['train'](b)
+            batch_train_loss = iter_funcs['train'](b)
             batch_train_losses.append(batch_train_loss)
 
         avg_train_loss = np.mean(batch_train_losses)
+
+        # VALIDATION PHASE
+        batch_valid_losses = []
+        batch_valid_accuracies = []
+        for b in range(num_batches_valid):
+            batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](b)
+            batch_valid_losses.append(batch_valid_loss)
+            batch_valid_accuracies.append(batch_valid_accuracy)
+
+        avg_valid_loss = np.mean(batch_valid_losses)
+        avg_valid_accuracy = np.mean(batch_valid_accuracies)
+
+        yield {
+            'number': epoch,
+            'train_loss': avg_train_loss,
+            'valid_loss': avg_valid_loss,
+            'valid_accuracy': avg_valid_accuracy,
+        }
+
+
+def cotrain(output_layer, dataset, batch_size=BATCH_SIZE):
+    num_batches_train = dataset['num_examples_train'] // batch_size
+    num_batches_valid = dataset['num_examples_valid'] // batch_size
+    num_batches_test = dataset['num_examples_test'] // batch_size
+
+    iter_funcs = create_iter_functions(dataset, output_layer)
+
+    for epoch in itertools.count(1):
+        # TRAIN PHASE
+        batch_train_losses = []
+        for b in range(num_batches_train):
+            batch_train_loss = iter_funcs['train'](b)
+            batch_train_losses.append(batch_train_loss)
+
+        avg_train_loss = np.mean(batch_train_losses)
+
+        # COTRAIN PHASE
+        for b in range(num_batches_test):
+            win_x, win_y = iter_funcs['cotrain'](b)
 
         # VALIDATION PHASE
         batch_valid_losses = []
@@ -231,7 +275,7 @@ def main(num_epochs=NUM_EPOCHS, verbose=True):
     output_layer = net_zoo.build_vanilla(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
-        batch_size=BATCH_SIZE_TRAIN,
+        batch_size=BATCH_SIZE,
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
     iter_funcs = create_iter_functions(dataset, output_layer)
