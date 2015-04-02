@@ -167,7 +167,7 @@ def create_iter_functions(dataset, output_layer,
         [batch_index], [winner_x, winner_y],
         givens={
             X_batch: dataset['X_test'][batch_slice],
-            y_batch: dataset['y_test'][batch_slice],
+            # y_batch: dataset['y_test'][batch_slice],
         },
     )
 
