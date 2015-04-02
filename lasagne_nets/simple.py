@@ -267,7 +267,11 @@ def cotrain(output_layer, dataset, batch_size=BATCH_SIZE):
         }
 
 
-def main(num_epochs=NUM_EPOCHS, verbose=True):
+# def main(num_epochs=NUM_EPOCHS, verbose=True):
+if __name__ == '__main__':
+    num_epochs = NUM_EPOCHS
+    verbose = True
+
     print("Loading data...")
     dataset = load_data()
 
