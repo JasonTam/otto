@@ -91,7 +91,8 @@ import time
 from lasagne_nets import net_zoo
 
 NUM_EPOCHS = 5000
-BATCH_SIZE = 2048
+BATCH_SIZE_TRAIN = 2048
+BATCH_SIZE_TEST = 2048
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
@@ -120,7 +121,7 @@ def load_data():
 
 def create_iter_functions(dataset, output_layer,
                           X_tensor_type=T.matrix,
-                          batch_size=BATCH_SIZE,
+                          batch_size=BATCH_SIZE_TRAIN,
                           learning_rate=LEARNING_RATE, momentum=MOMENTUM):
     batch_index = T.iscalar('batch_index')
     X_batch = X_tensor_type('x')
@@ -147,7 +148,7 @@ def create_iter_functions(dataset, output_layer,
         T.max(output_layer.get_output(X_batch, deterministic=True), axis=1),
         axis=0)
     winner_x = X_batch[winner_ind, :]
-    winner_y = y_batch[winner_ind]
+    winner_y = T.argmax(softmax_out[winner_ind, :])
 
 
     # Paramter updating
@@ -188,7 +189,7 @@ def create_iter_functions(dataset, output_layer,
     )
 
 
-def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
+def train(iter_funcs, dataset, batch_size=BATCH_SIZE_TRAIN):
     num_batches_train = dataset['num_examples_train'] // batch_size
     num_batches_valid = dataset['num_examples_valid'] // batch_size
 
@@ -230,7 +231,7 @@ def main(num_epochs=NUM_EPOCHS, verbose=True):
     output_layer = net_zoo.build_vanilla(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
-        batch_size=BATCH_SIZE,
+        batch_size=BATCH_SIZE_TRAIN,
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
     iter_funcs = create_iter_functions(dataset, output_layer)
