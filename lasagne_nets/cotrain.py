@@ -54,6 +54,7 @@ labels_fold_val = labels_train[val_ind]
 # pipe.fit(np.r_[feats_train[train_ind, :], feats_test])
 
 # -------------------------------------------------------------------------------------
+
 import pickle
 
 
@@ -74,6 +75,7 @@ def _load_data2():
             (X_valid, y_valid),
             (X_test, y_test))
     return data
+
 
 # -------------------------------------------------------------------------------------
 
@@ -145,6 +147,7 @@ def create_iter_functions(dataset, output_layer,
         axis=0)
     winner_x = X_batch[winner_ind, :]
     winner_y = T.argmax(softmax_out[winner_ind, :])
+    winner_prob = T.max(softmax_out[winner_ind, :])
 
     # Parameter updating
     all_params = lasagne.layers.get_all_params(output_layer)
@@ -161,7 +164,8 @@ def create_iter_functions(dataset, output_layer,
     )
 
     iter_cotrain = theano.function(
-        [batch_index], [winner_x, winner_y],
+        # [batch_index], [winner_x, winner_y],
+        [batch_index], [winner_ind, winner_x, winner_y, winner_prob],
         givens={
             X_batch: dataset['X_test'][batch_slice],
             # y_batch: dataset['y_test'][batch_slice],
@@ -241,8 +245,22 @@ def cotrain(output_layer, dataset, batch_size=BATCH_SIZE):
         avg_train_loss = np.mean(batch_train_losses)
 
         # COTRAIN PHASE
+        win_inds = []
+        win_xs = []
+        win_ys = []
+        win_probs = []
         for b in range(num_batches_test):
-            win_x, win_y = iter_funcs['cotrain'](b)
+            win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](b)
+            win_xs.append(win_x)
+            win_ys.append(win_y)
+            win_inds.append(win_ind)
+            win_probs.append(win_prob)
+        win_inds = np.array(win_inds)
+        win_xs = np.array(win_xs)
+        win_ys = np.array(win_ys)
+        win_probs = np.array(win_probs)
+        
+
 
         # VALIDATION PHASE
         batch_valid_losses = []
@@ -260,7 +278,7 @@ def cotrain(output_layer, dataset, batch_size=BATCH_SIZE):
             'train_loss': avg_train_loss,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
-            'lol': (win_x, win_y),
+            'lol': (win_inds, win_ys, win_probs),
         }
 
 
@@ -279,13 +297,13 @@ if __name__ == '__main__':
         batch_size=BATCH_SIZE,
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
-    iter_funcs = create_iter_functions(dataset, output_layer)
+    # iter_funcs = create_iter_functions(dataset, output_layer)
 
     print("Starting training...")
     now = time.time()
     try:
-        for epoch in train(iter_funcs, dataset):
-        # for epoch in cotrain(output_layer, dataset):
+        # for epoch in train(iter_funcs, dataset):
+        for epoch in cotrain(output_layer, dataset):
             if verbose:
                 if (epoch['number']-1) % 10 == 0:
                     print("Epoch {} of {} took {:.3f}s".format(
@@ -296,8 +314,8 @@ if __name__ == '__main__':
                     print("  validation accuracy:\t\t{:.2f} %%".format(
                         epoch['valid_accuracy'] * 100))
 
-                    # print('--------------')
-                    # print(epoch['lol'])
+                    print('--------------')
+                    print(epoch['lol'])
                     sys.stdout.flush()
             else:
                 pass
