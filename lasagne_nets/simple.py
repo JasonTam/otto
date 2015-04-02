@@ -136,7 +136,6 @@ def create_iter_functions(dataset, output_layer,
     loss_eval = objective.get_loss(X_batch, target=y_batch,
                                    deterministic=True)
 
-
     softmax_out = output_layer.get_output(X_batch, deterministic=True)
 
     # Validation Accuracy
@@ -144,9 +143,11 @@ def create_iter_functions(dataset, output_layer,
     accuracy = T.mean(T.eq(pred, y_batch), dtype=theano.config.floatX)
 
     # Co-training winners
-    # winning_obs = T.argmax(
-    #     T.max(output_layer.get_output(X_batch, deterministic=True), axis=1),
-    #     axis=0)
+    winner_ind = T.argmax(
+        T.max(output_layer.get_output(X_batch, deterministic=True), axis=1),
+        axis=0)
+    winner_x = X_batch[winner_ind, :]
+    winner_y = y_batch[winner_ind]
 
 
     # Paramter updating
@@ -155,7 +156,8 @@ def create_iter_functions(dataset, output_layer,
         loss_train, all_params, learning_rate, momentum)
 
     iter_train = theano.function(
-        [batch_index], loss_train,
+        # [batch_index], loss_train,
+        [batch_index], [loss_train, (winner_x, winner_y)],
         updates=updates,
         givens={
             X_batch: dataset['X_train'][batch_slice],
@@ -194,7 +196,8 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
-            batch_train_loss = iter_funcs['train'](b)
+            # batch_train_loss = iter_funcs['train'](b)
+            batch_train_loss, (win_x, win_y) = iter_funcs['train'](b)
             batch_train_losses.append(batch_train_loss)
 
         avg_train_loss = np.mean(batch_train_losses)
@@ -215,6 +218,7 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
             'train_loss': avg_train_loss,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
+            'lol': (win_x, win_y),
         }
 
 
@@ -244,6 +248,9 @@ def main(num_epochs=NUM_EPOCHS, verbose=True):
                     print("  validation loss:\t\t{:.6f}".format(epoch['valid_loss']))
                     print("  validation accuracy:\t\t{:.2f} %%".format(
                         epoch['valid_accuracy'] * 100))
+
+                    print('--------------')
+                    print(epoch['lol'])
                     sys.stdout.flush()
             else:
                 pass
