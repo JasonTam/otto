@@ -1,3 +1,4 @@
+from __future__ import print_function
 import matplotlib.pyplot as plt
 
 import src.io_tools as iot
@@ -78,7 +79,6 @@ def _load_data():
     return data
 
 # -------------------------------------------------------------------------------------
-from __future__ import print_function
 
 import itertools
 import pickle
