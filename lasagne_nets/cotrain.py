@@ -95,6 +95,7 @@ NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
 
+COTRAIN_START = 400  # Number of epochs to train before cotraining
 
 def load_data():
     data = _load_data()
@@ -234,14 +235,16 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
 def cotrain(output_layer, 
             # dataset,
             batch_size=BATCH_SIZE):
-    num_batches_train = dataset['num_examples_train'] // batch_size
-    num_batches_valid = dataset['num_examples_valid'] // batch_size
-    num_batches_test = dataset['num_examples_test'] // batch_size
 
     #iter_funcs = create_iter_functions(dataset, output_layer)
     #iter_funcs = create_iter_functions(output_layer)
 
     for epoch in itertools.count(1):
+        num_batches_train = dataset['num_examples_train'] // batch_size
+        num_batches_valid = dataset['num_examples_valid'] // batch_size
+        num_batches_test = dataset['num_examples_test'] // batch_size
+
+
         # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
         iter_funcs = create_iter_functions(output_layer)
 
@@ -287,8 +290,55 @@ def cotrain(output_layer,
             'train_loss': avg_train_loss,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
-            'lol': (win_inds, win_ys, win_probs),
+            'win': (win_inds, win_ys, win_probs),
         }
+
+
+def update_dataset(win_inds, win_ys, win_probs, prob_thresh=0.99):
+    """
+    win_inds: index with respect to each batch (each ind < batch_size)
+    win_ys: predicted class of winners
+    win_probs: probability (confidence) of winners
+    prob_thresh: confidence threshold to consider movement of winners
+    """
+    global dataset
+
+    inds_abs = win_inds + np.arange(len(win_inds)) * BATCH_SIZE
+    inds_abs = inds_abs[win_probs > prob_thresh]
+
+    # Add winners to training set
+    #X_win = dataset['X_test'][inds_abs, :]
+    #dataset['X_train'] = T.concatenate([dataset['X_train'], X_win])
+    #y_win = T.cast(theano.shared(win_ys), 'int32')
+    #dataset['y_train'] = T.concatenate([dataset['y_train'], y_win])
+
+    X_win = dataset['X_test'].get_value()[inds_abs, :]
+    X_train_new = np.concatenate([dataset['X_train'].get_value(), X_win])
+    y_train_new = np.concatenate([dataset['y_train'].owner.inputs[0].get_value(), win_ys])
+    # todo: need to do a linked shuffle for x and y
+    rng_state = np.random.get_state()
+    np.random.shuffle(X_train_new)
+    np.random.set_state(rng_state)
+    np.random.shuffle(y_train_new)
+
+    dataset['X_train'] = theano.shared(lasagne.utils.floatX(X_train_new))
+    dataset['y_train'] = T.cast(theano.shared(y_train_new), 'int32')
+
+
+    # Remove winners from testing set 
+    X_test_new = np.delete(dataset['X_test'].get_value(), inds_abs, axis=0)
+    y_test_new = np.delete(dataset['y_test'].owner.inputs[0].get_value(), inds_abs)
+    dataset['X_test'] = theano.shared(lasagne.utils.floatX(X_test_new))
+    dataset['y_test'] = T.cast(theano.shared(y_test_new), 'int32')
+
+
+
+    # Updating shapes
+    dataset['num_examples_train'] = X_train_new.shape[0]
+    dataset['num_examples_test'] = X_test_new.shape[0]
+
+    print('X_train shape: ' + str(X_train_new.shape))
+    print('X_test shape: ' + str(X_test_new.shape))
 
 
 # def main(num_epochs=NUM_EPOCHS, verbose=True):
@@ -322,8 +372,11 @@ if __name__ == '__main__':
         # for epoch in cotrain(output_layer, dataset):
         for epoch in cotrain(output_layer):
 
-            dataset['y_valid'] = T.cast(theano.shared(np.zeros(y_valid.shape)), 'int32')
-            
+            # COTRAINING BUSINESS
+            if epoch['number'] >= COTRAIN_START:
+                (win_inds, win_ys, win_probs) = epoch['win']
+                update_dataset(win_inds, win_ys, win_probs, prob_thresh=0.5)
+
             if verbose:
                 if (epoch['number']-1) % 1 == 0:
                     print("Epoch {} of {} took {:.3f}s".format(
@@ -335,7 +388,7 @@ if __name__ == '__main__':
                         epoch['valid_accuracy'] * 100))
 
                     print('--------------')
-                    print(epoch['lol'])
+                    print(epoch['win'])
                     sys.stdout.flush()
             else:
                 pass
