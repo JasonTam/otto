@@ -158,7 +158,7 @@ def create_iter_functions(dataset, output_layer,
 
     iter_train = theano.function(
         # [batch_index], loss_train,
-        [batch_index], [loss_train, (winner_x, winner_y)],
+        [batch_index], [loss_train, winner_x, winner_y],
         updates=updates,
         givens={
             X_batch: dataset['X_train'][batch_slice],
@@ -198,7 +198,7 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE_TRAIN):
         batch_train_losses = []
         for b in range(num_batches_train):
             # batch_train_loss = iter_funcs['train'](b)
-            batch_train_loss, (win_x, win_y) = iter_funcs['train'](b)
+            batch_train_loss, win_x, win_y = iter_funcs['train'](b)
             batch_train_losses.append(batch_train_loss)
 
         avg_train_loss = np.mean(batch_train_losses)
