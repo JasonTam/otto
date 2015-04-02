@@ -117,10 +117,13 @@ def load_data():
     )
 
 
-def create_iter_functions(dataset, output_layer,
-                          X_tensor_type=T.matrix,
-                          batch_size=BATCH_SIZE,
-                          learning_rate=LEARNING_RATE, momentum=MOMENTUM):
+def create_iter_functions(
+        # dataset, 
+        output_layer,
+        X_tensor_type=T.matrix,
+        batch_size=BATCH_SIZE,
+        learning_rate=LEARNING_RATE, momentum=MOMENTUM):
+    
     batch_index = T.iscalar('batch_index')
     X_batch = X_tensor_type('x')
     y_batch = T.ivector('y')
@@ -228,14 +231,20 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
         }
 
 
-def cotrain(output_layer, dataset, batch_size=BATCH_SIZE):
+def cotrain(output_layer, 
+            # dataset,
+            batch_size=BATCH_SIZE):
     num_batches_train = dataset['num_examples_train'] // batch_size
     num_batches_valid = dataset['num_examples_valid'] // batch_size
     num_batches_test = dataset['num_examples_test'] // batch_size
 
-    iter_funcs = create_iter_functions(dataset, output_layer)
+    #iter_funcs = create_iter_functions(dataset, output_layer)
+    #iter_funcs = create_iter_functions(output_layer)
 
     for epoch in itertools.count(1):
+        # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
+        iter_funcs = create_iter_functions(output_layer)
+
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
@@ -288,7 +297,14 @@ if __name__ == '__main__':
     verbose = True
 
     print("Loading data...")
+    # NOTE: `dataset` used with global scope for fishy business
     dataset = load_data()
+
+    data = _load_data()                                                    
+    X_train, y_train = data[0]
+    X_valid, y_valid = data[1]
+    X_test, y_test = data[2]
+
 
     print("Building model and compiling functions...")
     output_layer = net_zoo.build_vanilla(
@@ -303,9 +319,13 @@ if __name__ == '__main__':
     now = time.time()
     try:
         # for epoch in train(iter_funcs, dataset):
-        for epoch in cotrain(output_layer, dataset):
+        # for epoch in cotrain(output_layer, dataset):
+        for epoch in cotrain(output_layer):
+
+            dataset['y_valid'] = T.cast(theano.shared(np.zeros(y_valid.shape)), 'int32')
+            
             if verbose:
-                if (epoch['number']-1) % 10 == 0:
+                if (epoch['number']-1) % 1 == 0:
                     print("Epoch {} of {} took {:.3f}s".format(
                         epoch['number'], num_epochs, time.time() - now))
                     now = time.time()
@@ -326,22 +346,6 @@ if __name__ == '__main__':
         pass
 
     # return output_layer
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
