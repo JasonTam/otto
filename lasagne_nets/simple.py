@@ -66,11 +66,11 @@ y_test = -1*np.ones(len(feats_test), dtype=int)
 
 
 def _load_data():
-#     X_train = pipe.transform(feats_fold_train)
+    # X_train = pipe.transform(feats_fold_train)
     y_train = labels_fold_train
-#     X_valid = pipe.transform(feats_fold_val)
+    # X_valid = pipe.transform(feats_fold_val)
     y_valid = labels_fold_val
-#     X_test = pipe.transform(feats_test)
+    # X_test = pipe.transform(feats_test)
     y_test = -1*np.ones(len(feats_test), dtype=int)
 
     data = ((X_train, y_train),
@@ -128,17 +128,28 @@ def create_iter_functions(dataset, output_layer,
     batch_slice = slice(
         batch_index * batch_size, (batch_index + 1) * batch_size)
 
-    objective = lasagne.objectives.Objective(output_layer,
+    objective = lasagne.objectives.Objective(
+        output_layer,
         loss_function=lasagne.objectives.categorical_crossentropy)
 
     loss_train = objective.get_loss(X_batch, target=y_batch)
     loss_eval = objective.get_loss(X_batch, target=y_batch,
                                    deterministic=True)
 
-    pred = T.argmax(
-        output_layer.get_output(X_batch, deterministic=True), axis=1)
+
+    softmax_out = output_layer.get_output(X_batch, deterministic=True)
+
+    # Validation Accuracy
+    pred = T.argmax(softmax_out, axis=1)
     accuracy = T.mean(T.eq(pred, y_batch), dtype=theano.config.floatX)
 
+    # Co-training winners
+    # winning_obs = T.argmax(
+    #     T.max(output_layer.get_output(X_batch, deterministic=True), axis=1),
+    #     axis=0)
+
+
+    # Paramter updating
     all_params = lasagne.layers.get_all_params(output_layer)
     updates = lasagne.updates.nesterov_momentum(
         loss_train, all_params, learning_rate, momentum)
@@ -180,6 +191,7 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
     num_batches_valid = dataset['num_examples_valid'] // batch_size
 
     for epoch in itertools.count(1):
+        # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
             batch_train_loss = iter_funcs['train'](b)
@@ -187,6 +199,7 @@ def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
 
         avg_train_loss = np.mean(batch_train_losses)
 
+        # VALIDATION PHASE
         batch_valid_losses = []
         batch_valid_accuracies = []
         for b in range(num_batches_valid):
