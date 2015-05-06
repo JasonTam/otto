@@ -30,8 +30,20 @@ def build_vanilla(input_dim, output_dim,
         l_hidden2,
         p=0.5,
     )
-    l_out = lasagne.layers.DenseLayer(
+
+    l_hidden3 = lasagne.layers.DenseLayer(
         l_hidden2_dropout,
+        num_units=num_hidden_units,
+        nonlinearity=lasagne.nonlinearities.rectify,
+    )
+
+    l_hidden3_dropout = lasagne.layers.DropoutLayer(
+        l_hidden3,
+        p=0.5,
+    )
+
+    l_out = lasagne.layers.DenseLayer(
+        l_hidden3_dropout,
         num_units=output_dim,
         nonlinearity=lasagne.nonlinearities.softmax,
     )

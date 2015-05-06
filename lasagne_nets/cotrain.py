@@ -7,6 +7,7 @@ import os
 import numpy as np
 from time import time
 import sys
+import copy
 
 from sklearn.cross_validation import StratifiedKFold
 
@@ -93,9 +94,10 @@ NUM_EPOCHS = 5000
 BATCH_SIZE = 1024
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
-MOMENTUM = 0.7
+MOMENTUM = 0.9
 
-COTRAIN_START = 1  # Number of epochs to train before cotraining
+COTRAIN_START = 10  # Number of epochs to train before cotraining
+COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data1():
     data = _load_data()
@@ -307,6 +309,11 @@ def create_iter_functions2(
     )
 
 
+def unique_hist(x):
+    y = np.bincount(x)
+    ii = np.nonzero(y)[0]
+    return zip(ii, y[ii])
+
 
 def train(iter_funcs, dataset1, batch_size=BATCH_SIZE):
     num_batches_train = dataset1['num_examples_train'] // batch_size
@@ -378,8 +385,9 @@ def cotrain1(output_layer,
         win_inds = np.array(win_inds)
         win_xs = np.array(win_xs)
         win_ys = np.array(win_ys)
+        win_class_hist = unique_hist(win_ys)
         win_probs = np.array(win_probs)
-        
+        win_prob_avg = win_probs.mean()
 
 
         # VALIDATION PHASE
@@ -399,6 +407,7 @@ def cotrain1(output_layer,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
             'win': (win_inds, win_ys, win_probs),
+            'win_stats': (win_class_hist, win_prob_avg),
         }
 
 
@@ -440,8 +449,10 @@ def cotrain2(output_layer,
         win_inds = np.array(win_inds)
         win_xs = np.array(win_xs)
         win_ys = np.array(win_ys)
+        win_class_hist = unique_hist(win_ys)
         win_probs = np.array(win_probs)
-        
+        win_prob_avg = win_probs.mean()
+ 
 
 
         # VALIDATION PHASE
@@ -461,10 +472,11 @@ def cotrain2(output_layer,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
             'win': (win_inds, win_ys, win_probs),
+            'win_stats': (win_class_hist, win_prob_avg),
         }
 
 
-def self_update_dataset(dataset, win_inds, win_ys, win_probs, prob_thresh=0.99):
+def self_update_dataset(dataset, win_inds, win_ys, win_probs, prob_thresh=0.999):
     """
     win_inds: index with respect to each batch (each ind < batch_size)
     win_ys: predicted class of winners
@@ -498,15 +510,29 @@ def self_update_dataset(dataset, win_inds, win_ys, win_probs, prob_thresh=0.99):
     dataset['num_examples_train'] = X_train_new.shape[0]
     dataset['num_examples_test'] = X_test_new.shape[0]
 
-    print('inds: ' + inds_abs)
+    # print('inds: ' + inds_abs)
+    print('####### COTRAIN SAMPLE MOVEMENT #######')
+    print('# samples moved: ' + str(len(inds_abs)))
     print('X_train shape: ' + str(X_train_new.shape))
     print('X_test shape: ' + str(X_test_new.shape))
+    print('#######################################')
 
     return dataset
 
 
+def shuffle_unison(a, b, verbose=False):
+    """ Shuffles same-length arrays `a` and `b` in unison"""
+    if verbose:
+        print('x shape: ' + str(a.shape))
+        print(a)
+        print('y shape: ' + str(b.shape))
+        print(b)
+    c = np.c_[a.reshape(len(a), -1), b.reshape(len(b), -1)]
+    return c[:, :a.size//len(a)].reshape(a.shape), c[:, a.size//len(a):].reshape(b.shape)
+
+
 def co_update_dataset(dataset_src, dataset_dst,
-                      win_inds, win_ys, win_probs, prob_thresh=0.99):                    
+                      win_inds, win_ys, win_probs, prob_thresh):                    
     """
     dataset_src: winners from this dataset's test set
     dataset_dst: winners will be placed in this dataset's train set
@@ -516,18 +542,22 @@ def co_update_dataset(dataset_src, dataset_dst,
         win_probs: probability (confidence) of winners
     prob_thresh: confidence threshold to consider movement of winners
     """
-    
+    print('Co-train sample movement:')  
+ 
     inds_abs = win_inds + np.arange(len(win_inds)) * BATCH_SIZE
     inds_abs = inds_abs[win_probs > prob_thresh]
-    if len(inds_abs):
+    y_win_inds = win_probs > prob_thresh
+    if 1:#len(inds_abs):
         # Add winners to destination training set
         X_win = dataset_src['X_test'].get_value()[inds_abs, :]
+        y_win = win_ys[y_win_inds]
         X_train_new = np.concatenate([dataset_dst['X_train'].get_value(), X_win])
-        y_train_new = np.concatenate([dataset_dst['y_train'].owner.inputs[0].get_value(), win_ys])
-        rng_state = np.random.get_state()
-        np.random.shuffle(X_train_new)
-        np.random.set_state(rng_state)
-        np.random.shuffle(y_train_new)
+        y_train_new = np.concatenate([dataset_dst['y_train'].owner.inputs[0].get_value(), y_win])
+        #rng_state = np.random.get_state()
+        #np.random.shuffle(X_train_new)
+        #np.random.set_state(rng_state)
+        #np.random.shuffle(y_train_new)
+        X_train_new, y_train_new = shuffle_unison(X_train_new, y_train_new)
         dataset_dst['X_train'] = theano.shared(lasagne.utils.floatX(X_train_new))
         dataset_dst['y_train'] = T.cast(theano.shared(y_train_new), 'int32')
 
@@ -543,9 +573,11 @@ def co_update_dataset(dataset_src, dataset_dst,
         dataset_dst['num_examples_train'] = X_train_new.shape[0]
         dataset_src['num_examples_test'] = X_test_new.shape[0]
 
-        print('inds: ' + str(inds_abs))
+        # print('inds: ' + str(inds_abs))
+        print('# samples moved: ' + str(len(inds_abs)))
         print('X_train shape: ' + str(X_train_new.shape))
         print('X_test shape: ' + str(X_test_new.shape))
+        print('transfered class dist: \n' + str(unique_hist(y_win)))
     else:
         print('Winners not confident enough')
 
@@ -555,16 +587,18 @@ def co_update_dataset(dataset_src, dataset_dst,
 
 def disp_stats(epoch_d):
     global now
+    print('==========================================')
     print("Epoch {} of {} took {:.3f}s".format(
         epoch_d['number'], num_epochs, time.time() - now))
     now = time.time()
     print("  training loss:\t\t{:.6f}".format(epoch_d['train_loss']))
     print("  validation loss:\t\t{:.6f}".format(epoch_d['valid_loss']))
-    print("  validation accuracy:\t\t{:.2f} %%".format(
+    print("  validation accuracy:\t\t{:.2f} %".format(
         epoch_d['valid_accuracy'] * 100))
 
-    print('--------------')
-    print(epoch_d['win'])
+    print('------Winner class dist & avg prob--------')
+    print(epoch_d['win_stats'])
+    print('==========================================')
     sys.stdout.flush()
 
 
@@ -587,7 +621,8 @@ if __name__ == '__main__':
 
 
     print("Building model and compiling functions...")
-    output_layer = net_zoo.build_vanilla(
+    #output_layer = net_zoo.build_vanilla(
+    output_layer = net_zoo.build_maxout(
         input_dim=dataset1['input_dim'],
         output_dim=dataset1['output_dim'],
         batch_size=BATCH_SIZE,
@@ -598,29 +633,31 @@ if __name__ == '__main__':
     print("Starting training...")
     now = time.time()
     try:
-        # for epoch in train(iter_funcs, dataset1):
-        # for epoch in cotrain(output_layer, dataset1):
-        # for epoch in cotrain(output_layer):
-        net_iter1 = cotrain1(output_layer)
-        net_iter2 = cotrain2(output_layer)
+        net_iter1 = cotrain1(copy.deepcopy(output_layer))
+        net_iter2 = cotrain2(copy.deepcopy(output_layer))
         for ii in range(num_epochs):
             epoch1 = net_iter1.next()
 
             # COTRAINING BUSINESS for epoch1
-            if epoch1['number'] >= COTRAIN_START:
+            en1 = epoch1['number']
+            if (en1 >= COTRAIN_START) and (en1 % COTRAIN_PERIOD == 0):
+                # If enough iters, move confident predictions to dataset 2
                 (win_inds, win_ys, win_probs) = epoch1['win']
                 dataset1, dataset2 = co_update_dataset(
                                 dataset1, dataset2, 
-                                win_inds, win_ys, win_probs, prob_thresh=0.99)
+                                win_inds, win_ys, win_probs, prob_thresh=0.9999)
             
 
-            epoch2 = net_iter1.next()
+            epoch2 = net_iter2.next()
 
-            if epoch2['number'] >= COTRAIN_START:
+            # COTRAINING BUSINESS for epoch2
+            en2 = epoch2['number']
+            if (en2 >= COTRAIN_START) and (en2 % COTRAIN_PERIOD == 0):
+                # If enough iters, move confident predictions to dataset 1
                 (win_inds, win_ys, win_probs) = epoch2['win']
                 dataset2, dataset1 = co_update_dataset(
                                 dataset2, dataset1,
-                                win_inds, win_ys, win_probs, prob_thresh=0.99)
+                                win_inds, win_ys, win_probs, prob_thresh=0.9999)
 
             if log:
                 write_log(epoch1, './1.txt')
@@ -629,7 +666,9 @@ if __name__ == '__main__':
 
             if verbose:
                 if (epoch1['number']-1) % 1 == 0:
+                    print('---MODEL1 STATS---')
                     disp_stats(epoch1)
+                    print('---MODEL2 STATS---')
                     disp_stats(epoch2)
             else:
                 pass
