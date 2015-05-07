@@ -90,13 +90,13 @@ import theano.tensor as T
 import time
 from lasagne_nets import net_zoo
 
-NUM_EPOCHS = 5000
+NUM_EPOCHS = 7500
 BATCH_SIZE = 1024
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
 
-COTRAIN_START = 10  # Number of epochs to train before cotraining
+COTRAIN_START = 250  # Number of epochs to train before cotraining
 COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data1():
@@ -530,6 +530,10 @@ def shuffle_unison(a, b, verbose=False):
     c = np.c_[a.reshape(len(a), -1), b.reshape(len(b), -1)]
     return c[:, :a.size//len(a)].reshape(a.shape), c[:, a.size//len(a):].reshape(b.shape)
 
+    #rng_state = np.random.get_state()
+    #np.random.shuffle(X_train_new)
+    #np.random.set_state(rng_state)
+    #np.random.shuffle(y_train_new)
 
 def co_update_dataset(dataset_src, dataset_dst,
                       win_inds, win_ys, win_probs, prob_thresh):                    
@@ -551,31 +555,31 @@ def co_update_dataset(dataset_src, dataset_dst,
         # Add winners to destination training set
         X_win = dataset_src['X_test'].get_value()[inds_abs, :]
         y_win = win_ys[y_win_inds]
-        X_train_new = np.concatenate([dataset_dst['X_train'].get_value(), X_win])
-        y_train_new = np.concatenate([dataset_dst['y_train'].owner.inputs[0].get_value(), y_win])
-        #rng_state = np.random.get_state()
-        #np.random.shuffle(X_train_new)
-        #np.random.set_state(rng_state)
-        #np.random.shuffle(y_train_new)
-        X_train_new, y_train_new = shuffle_unison(X_train_new, y_train_new)
-        dataset_dst['X_train'] = theano.shared(lasagne.utils.floatX(X_train_new))
-        dataset_dst['y_train'] = T.cast(theano.shared(y_train_new), 'int32')
+        X_train_new_dst = np.concatenate([dataset_dst['X_train'].get_value(), X_win])
+        y_train_new_dst = np.concatenate([dataset_dst['y_train'].owner.inputs[0].get_value(), y_win])
+        
+        X_train_new_dst, y_train_new_dst = shuffle_unison(X_train_new_dst, y_train_new_dst)
+        dataset_dst['X_train'] = theano.shared(lasagne.utils.floatX(X_train_new_dst))
+        dataset_dst['y_train'] = T.cast(theano.shared(y_train_new_dst), 'int32')
 
 
-        # Remove winners from source testing set 
+        # Remove winners from BOTH testing sets 
         X_test_new = np.delete(dataset_src['X_test'].get_value(), inds_abs, axis=0)
         y_test_new = np.delete(dataset_src['y_test'].owner.inputs[0].get_value(), inds_abs)
         dataset_src['X_test'] = theano.shared(lasagne.utils.floatX(X_test_new))
         dataset_src['y_test'] = T.cast(theano.shared(y_test_new), 'int32')
+        dataset_dst['X_test'] = theano.shared(lasagne.utils.floatX(X_test_new))
+        dataset_dst['y_test'] = T.cast(theano.shared(y_test_new), 'int32')
 
 
         # Updating shapes
-        dataset_dst['num_examples_train'] = X_train_new.shape[0]
+        dataset_dst['num_examples_train'] = X_train_new_dst.shape[0]
         dataset_src['num_examples_test'] = X_test_new.shape[0]
+        dataset_dst['num_examples_test'] = X_test_new.shape[0]
 
         # print('inds: ' + str(inds_abs))
         print('# samples moved: ' + str(len(inds_abs)))
-        print('X_train shape: ' + str(X_train_new.shape))
+        print('X_train shape: ' + str(X_train_new_dst.shape))
         print('X_test shape: ' + str(X_test_new.shape))
         print('transfered class dist: \n' + str(unique_hist(y_win)))
     else:
@@ -621,8 +625,8 @@ if __name__ == '__main__':
 
 
     print("Building model and compiling functions...")
-    #output_layer = net_zoo.build_vanilla(
-    output_layer = net_zoo.build_maxout(
+    output_layer = net_zoo.build_vanilla(
+    #output_layer = net_zoo.build_maxout(
         input_dim=dataset1['input_dim'],
         output_dim=dataset1['output_dim'],
         batch_size=BATCH_SIZE,
