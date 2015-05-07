@@ -5,6 +5,10 @@ import lasagne
 
 def build_vanilla(input_dim, output_dim,
                   batch_size, num_hidden_units):
+    
+    # non_lin_fn = lasagne.nonlinearities.rectify
+    non_lin_fn = lasagne.nonlinearities.LeakyRectify()
+    # non_lin_fn = lasagne.nonlinearities.tanh
 
     l_in = lasagne.layers.InputLayer(
         shape=(batch_size, input_dim),
@@ -12,7 +16,7 @@ def build_vanilla(input_dim, output_dim,
     l_hidden1 = lasagne.layers.DenseLayer(
         l_in,
         num_units=num_hidden_units,
-        nonlinearity=lasagne.nonlinearities.rectify,
+        nonlinearity=non_lin_fn,
     )
 
     l_hidden1_dropout = lasagne.layers.DropoutLayer(
@@ -23,7 +27,7 @@ def build_vanilla(input_dim, output_dim,
     l_hidden2 = lasagne.layers.DenseLayer(
         l_hidden1_dropout,
         num_units=num_hidden_units,
-        nonlinearity=lasagne.nonlinearities.rectify,
+        nonlinearity=non_lin_fn,
     )
 
     l_hidden2_dropout = lasagne.layers.DropoutLayer(
@@ -34,7 +38,7 @@ def build_vanilla(input_dim, output_dim,
     l_hidden3 = lasagne.layers.DenseLayer(
         l_hidden2_dropout,
         num_units=num_hidden_units,
-        nonlinearity=lasagne.nonlinearities.rectify,
+        nonlinearity=non_lin_fn,
     )
 
     l_hidden3_dropout = lasagne.layers.DropoutLayer(
@@ -82,7 +86,7 @@ def build_maxout(input_dim, output_dim,
 
     lh2m = lasagne.layers.FeaturePoolLayer(
         l_hidden2,
-        ds=2,
+        ds=2
     )
 
     l_hidden2_dropout = lasagne.layers.DropoutLayer(
@@ -95,3 +99,57 @@ def build_maxout(input_dim, output_dim,
         nonlinearity=lasagne.nonlinearities.softmax,
     )
     return l_out
+
+
+def build_hybrid_maxout(input_dim, output_dim,                                                              
+                  batch_size, num_hidden_units):
+
+    l_in = lasagne.layers.InputLayer(
+        shape=(batch_size, input_dim),
+    )
+    l_hidden1 = lasagne.layers.DenseLayer(
+        l_in,
+        num_units=num_hidden_units,
+        # nonlinearity=lasagne.nonlinearities.rectify,
+        nonlinearity=lasagne.nonlinearities.identity,
+    )
+
+    lh1m = lasagne.layers.FeaturePoolLayer(
+        l_hidden1,
+        ds=2,
+    )
+
+    l_hidden1_dropout = lasagne.layers.DropoutLayer(
+        lh1m,
+        p=0.5,
+    )
+
+    l_hidden2 = lasagne.layers.DenseLayer(
+        l_hidden1_dropout,
+        num_units=num_hidden_units,
+        nonlinearity=lasagne.nonlinearities.rectify,
+    )
+
+    l_hidden2_dropout = lasagne.layers.DropoutLayer(
+        l_hidden2,
+        p=0.5,
+    )
+
+    l_hidden3 = lasagne.layers.DenseLayer(
+        l_hidden2_dropout,
+        num_units=num_hidden_units,
+        nonlinearity=lasagne.nonlinearities.rectify,
+    )
+
+    l_hidden3_dropout = lasagne.layers.DropoutLayer(
+        l_hidden3,
+        p=0.5,
+    )
+
+    l_out = lasagne.layers.DenseLayer(
+        l_hidden3_dropout,
+        num_units=output_dim,
+        nonlinearity=lasagne.nonlinearities.softmax,
+    )
+    return l_out
+

@@ -56,11 +56,13 @@ labels_fold_val = labels_train[val_ind]
 
 # -------------------------------------------------------------------------------------
 
-import pickle
+import cPickle as pickle
+import gzip
 
 
 def _load_data():
-    data = pickle.load(open(os.path.join(DATA_DIR, 'transformed_data.p'), 'rb'))
+    # data = pickle.load(open(os.path.join(DATA_DIR, 'transformed_data.p'), 'rb'))
+    data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'log_data.pgz'), 'rb'))
     return data
 
 
@@ -84,19 +86,21 @@ import itertools
 import pickle
 import sys
 import numpy as np
+import math
 import lasagne
 import theano
 import theano.tensor as T
 import time
 from lasagne_nets import net_zoo
 
-NUM_EPOCHS = 7500
-BATCH_SIZE = 1024
+NUM_EPOCHS = 10000
+# BATCH_SIZE = 1024
+BATCH_SIZE = 2048
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
 
-COTRAIN_START = 250  # Number of epochs to train before cotraining
+COTRAIN_START = 100  # Number of epochs to train before cotraining
 COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data1():
@@ -645,23 +649,25 @@ if __name__ == '__main__':
             # COTRAINING BUSINESS for epoch1
             en1 = epoch1['number']
             if (en1 >= COTRAIN_START) and (en1 % COTRAIN_PERIOD == 0):
+                print('Cotrain business after model1')
                 # If enough iters, move confident predictions to dataset 2
                 (win_inds, win_ys, win_probs) = epoch1['win']
                 dataset1, dataset2 = co_update_dataset(
                                 dataset1, dataset2, 
-                                win_inds, win_ys, win_probs, prob_thresh=0.9999)
+                                win_inds, win_ys, win_probs, prob_thresh=0.99)
             
 
             epoch2 = net_iter2.next()
 
             # COTRAINING BUSINESS for epoch2
             en2 = epoch2['number']
-            if (en2 >= COTRAIN_START) and (en2 % COTRAIN_PERIOD == 0):
+            if (en2 >= COTRAIN_START) and ((en2 + math.ceil(COTRAIN_PERIOD/2.)) % COTRAIN_PERIOD == 0):
+                print('Cotrain business after model2')
                 # If enough iters, move confident predictions to dataset 1
                 (win_inds, win_ys, win_probs) = epoch2['win']
                 dataset2, dataset1 = co_update_dataset(
                                 dataset2, dataset1,
-                                win_inds, win_ys, win_probs, prob_thresh=0.9999)
+                                win_inds, win_ys, win_probs, prob_thresh=0.99)
 
             if log:
                 write_log(epoch1, './1.txt')

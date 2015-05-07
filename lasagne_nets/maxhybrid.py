@@ -274,7 +274,8 @@ if __name__ == '__main__':
     dataset = load_data()
 
     print("Building model and compiling functions...")
-    output_layer = net_zoo.build_vanilla(
+    #output_layer = net_zoo.build_vanilla(
+    output_layer = net_zoo.build_hybrid_maxout(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
         batch_size=BATCH_SIZE,
