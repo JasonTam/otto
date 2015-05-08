@@ -4,7 +4,7 @@ import lasagne
 
 
 def build_vanilla(input_dim, output_dim,
-                  batch_size, num_hidden_units):
+                  num_hidden_units, batch_size=None):
     
     # non_lin_fn = lasagne.nonlinearities.rectify
     non_lin_fn = lasagne.nonlinearities.LeakyRectify()
@@ -55,7 +55,7 @@ def build_vanilla(input_dim, output_dim,
 
 
 def build_maxout(input_dim, output_dim,
-                 batch_size, num_hidden_units):
+                 num_hidden_units, batch_size=None):
 
     l_in = lasagne.layers.InputLayer(
         shape=(batch_size, input_dim),

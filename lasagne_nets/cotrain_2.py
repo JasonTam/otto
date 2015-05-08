@@ -8,6 +8,7 @@ import numpy as np
 from time import time
 import sys
 import copy
+import pdb
 
 from sklearn.cross_validation import StratifiedKFold
 
@@ -95,16 +96,16 @@ from lasagne_nets import net_zoo
 
 NUM_EPOCHS = 10000
 # BATCH_SIZE = 1024
-BATCH_SIZE = 2048
-BATCH_SIZE_TRAIN = 2048
+# BATCH_SIZE = 2048
+BATCH_SIZE_TRAIN = 600
 BATCH_SIZE_VAL = 2048
-BATCH_SIZE_TEST = 2048
+BATCH_SIZE_TEST = 400
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
 
 COTRAIN_START = 1  # Number of epochs to train before cotraining
-COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
+COTRAIN_PERIOD = 1   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data():
     data = _load_data()
@@ -112,18 +113,18 @@ def load_data():
     X_valid, y_valid = data[1]
     X_test, y_test = data[2]
 
-    fn_x = lambda x: theano.shared(lasagne.utils.floatX(x))
-    fn_y = lambda y: T.cast(theano.shared(y), 'int32')
+    fn_x = lambda x, name=None: theano.shared(lasagne.utils.floatX(x), name=name)
+    fn_y = lambda y, name=None: T.cast(theano.shared(y, name=name), 'int32')
 
     return dict(
-        X_train1=fn_x(X_train),  # For model 1
-        y_train1=fn_y(y_train), 
-        X_train2=fn_x(X_train),  # For model 2
-        y_train2=fn_y(y_train),
-        X_valid=fn_x(X_valid),
-        y_valid=fn_y(y_valid),
-        X_test=fn_x(X_test),
-        y_test=fn_y(y_test),
+        X_train1=fn_x(X_train, 'X_train1'),  # For model 1
+        y_train1=fn_y(y_train, 'y_train1'), 
+        X_train2=fn_x(X_train, 'X_train2'),  # For model 2
+        y_train2=fn_y(y_train, 'y_train2'),
+        X_valid=fn_x(X_valid, 'X_valid'),
+        y_valid=fn_y(y_valid, 'y_valid'),
+        X_test=fn_x(X_test, 'X_test'),
+        y_test=fn_y(y_test, 'y_test'),
         num_examples_train1=X_train.shape[0],  # For model 1
         num_examples_train2=X_train.shape[0],  # For model 2
         num_examples_valid=X_valid.shape[0],
@@ -136,15 +137,26 @@ def create_iter_functions(
         output_layer,
         model_num,
         X_tensor_type=T.matrix,
-        batch_size=BATCH_SIZE,
+        # batch_size=BATCH_SIZE,
+        batch_size_train=BATCH_SIZE_TRAIN,
+        batch_size_val=BATCH_SIZE_VAL,
+        batch_size_test=BATCH_SIZE_TEST,
         learning_rate=LEARNING_RATE, momentum=MOMENTUM):
     mn = str(model_num)
 
     batch_index = T.iscalar('batch_index')
     X_batch = X_tensor_type('x')
     y_batch = T.ivector('y')
-    batch_slice = slice(
-        batch_index * batch_size, (batch_index + 1) * batch_size)
+    #batch_slice = slice(
+    #    batch_index * batch_size, (batch_index + 1) * batch_size)
+    batch_slice_train = slice(
+        batch_index * batch_size_train, (batch_index + 1) * batch_size_train)
+    batch_slice_val = slice(
+        batch_index * batch_size_val, (batch_index + 1) * batch_size_val) 
+    batch_slice_test = slice(
+        batch_index * batch_size_test, (batch_index + 1) * batch_size_test)  
+        
+        
 
     objective = lasagne.objectives.Objective(
         output_layer,
@@ -170,40 +182,39 @@ def create_iter_functions(
 
     # Parameter updating
     all_params = lasagne.layers.get_all_params(output_layer)
-    updates = lasagne.updates.nesterov_momentum(
+    updates_train = lasagne.updates.nesterov_momentum(
         loss_train, all_params, learning_rate, momentum)
+    
 
     iter_train = theano.function(
         [batch_index], loss_train,
-        updates=updates,
+        updates=updates_train,
         givens={
-            X_batch: dataset['X_train'+mn][batch_slice],
-            y_batch: dataset['y_train'+mn][batch_slice],
+            X_batch: dataset['X_train'+mn][batch_slice_train],
+            y_batch: dataset['y_train'+mn][batch_slice_train],
         },
     )
 
     iter_cotrain = theano.function(
-        # [batch_index], [winner_x, winner_y],
         [batch_index], [winner_ind, winner_x, winner_y, winner_prob],
         givens={
-            X_batch: dataset['X_test'][batch_slice],
-            # y_batch: dataset1['y_test'][batch_slice],
+            X_batch: dataset['X_test'][batch_slice_test],
         },
     )
 
     iter_valid = theano.function(
         [batch_index], [loss_eval, accuracy],
         givens={
-            X_batch: dataset['X_valid'][batch_slice],
-            y_batch: dataset['y_valid'][batch_slice],
+            X_batch: dataset['X_valid'][batch_slice_val],
+            y_batch: dataset['y_valid'][batch_slice_val],
         },
     )
 
     iter_test = theano.function(
         [batch_index], [loss_eval, accuracy],
         givens={
-            X_batch: dataset['X_test'][batch_slice],
-            y_batch: dataset['y_test'][batch_slice],
+            X_batch: dataset['X_test'][batch_slice_test],
+            y_batch: dataset['y_test'][batch_slice_test],
         },
     )
 
@@ -223,14 +234,19 @@ def unique_hist(x):
 
 def cotrain(iter_funcs, 
             model_num,
-            batch_size=BATCH_SIZE):
+            batch_size_train=BATCH_SIZE_TRAIN,
+            batch_size_val=BATCH_SIZE_VAL,
+            batch_size_test=BATCH_SIZE_TEST,
+            ):
+            # batch_size=BATCH_SIZE):
 
     mn = str(model_num)
 
     for epoch in itertools.count(1):
-        num_batches_train = dataset['num_examples_train'+mn] // batch_size
-        num_batches_valid = dataset['num_examples_valid'] // batch_size
-        num_batches_test = dataset['num_examples_test'] // batch_size
+        num_batches_train = dataset['num_examples_train'+mn] // batch_size_train
+        num_batches_valid = dataset['num_examples_valid'] // batch_size_val
+        num_batches_test = dataset['num_examples_test'] // batch_size_test
+        print('>>>>>>>>>>' + str(num_batches_train))
 
         # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
         ### iter_funcs = create_iter_functions(output_layer, model_num=model_num)
@@ -238,6 +254,13 @@ def cotrain(iter_funcs,
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
+            print('<<<<' + str(b))
+            """
+            batch_slice_train = slice(b * batch_size_train, (b + 1) * batch_size_train)
+            X_batch = dataset['X_train'+mn].get_value()[batch_slice_train]
+            y_batch = dataset['y_train'+mn][batch_slice_train].eval()
+            batch_train_loss = iter_funcs['train'](X_batch, y_batch)
+            """
             batch_train_loss = iter_funcs['train'](b)
             batch_train_losses.append(batch_train_loss)
 
@@ -249,7 +272,15 @@ def cotrain(iter_funcs,
         win_ys = []
         win_probs = []
         for b in range(num_batches_test):
+            """
+            batch_slice_test = slice(b * batch_size_test, (b + 1) * batch_size_test)
+            X_batch = dataset['X_test'].get_value()[batch_slice_test]
+            y_batch = dataset['y_test'][batch_slice_test].eval()
+            win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](X_batch)
+            """
+            
             win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](b)
+            
             win_xs.append(win_x)
             win_ys.append(win_y)
             win_inds.append(win_ind)
@@ -266,7 +297,15 @@ def cotrain(iter_funcs,
         batch_valid_losses = []
         batch_valid_accuracies = []
         for b in range(num_batches_valid):
+            """
+            batch_slice_val = slice(b * batch_size_val, (b + 1) * batch_size_val)
+            X_batch = dataset['X_valid'].get_value()[batch_slice_val]
+            y_batch = dataset['y_valid'][batch_slice_val].eval()
+            batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](X_batch, y_batch)
+            """
+            
             batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](b)
+            
             batch_valid_losses.append(batch_valid_loss)
             batch_valid_accuracies.append(batch_valid_accuracy)
 
@@ -299,7 +338,8 @@ def shuffle_unison(a, b, verbose=False):
     #np.random.shuffle(y_train_new)
 
 def co_update_dataset(dataset, model_num,
-                      win_inds, win_ys, win_probs, prob_thresh):                    
+                      win_inds, win_ys, win_probs, prob_thresh,
+                      batch_size_test=BATCH_SIZE_TEST):                    
     """
     dataset: contains the data for model 1 and model 2
         (mutable and will be modified in-place)
@@ -314,7 +354,7 @@ def co_update_dataset(dataset, model_num,
     src_n = str(model_num)
     dst_n = str((model_num%2)+1)
 
-    inds_abs = win_inds + np.arange(len(win_inds)) * BATCH_SIZE
+    inds_abs = win_inds + np.arange(len(win_inds)) * batch_size_test
     inds_abs = inds_abs[win_probs > prob_thresh]
     y_win_inds = win_probs > prob_thresh
     if 1:#len(inds_abs):
@@ -386,16 +426,16 @@ if __name__ == '__main__':
 
 
     print("Building model and compiling functions...")
-    output_layer = net_zoo.build_vanilla(
+    net = net_zoo.build_vanilla(
     #output_layer = net_zoo.build_maxout(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
-        batch_size=BATCH_SIZE,
         num_hidden_units=NUM_HIDDEN_UNITS,
+        batch_size=None,
     )
     # iter_funcs = create_iter_functions(dataset1, output_layer)
-    iter_funcs1 = create_iter_functions(copy.deepcopy(output_layer), model_num=1)
-    iter_funcs2 = create_iter_functions(copy.deepcopy(output_layer), model_num=2)
+    iter_funcs1 = create_iter_functions(copy.deepcopy(net), model_num=1)
+    iter_funcs2 = create_iter_functions(copy.deepcopy(net), model_num=2)
 
     print("Starting training...")
     now = time.time()
@@ -407,7 +447,7 @@ if __name__ == '__main__':
 
             # COTRAINING BUSINESS for epoch1
             en1 = epoch1['number']
-            if (en1 >= COTRAIN_START) and (en1 % COTRAIN_PERIOD == 0):
+            if (en1 >= COTRAIN_START) and ((en1-1) % COTRAIN_PERIOD == 0):
                 print('Cotrain business after model1')
                 # If enough iters, move confident predictions to dataset 2
                 (win_inds, win_ys, win_probs) = epoch1['win']
@@ -420,7 +460,7 @@ if __name__ == '__main__':
 
             # COTRAINING BUSINESS for epoch2
             en2 = epoch2['number']
-            if (en2 >= COTRAIN_START) and ((en2 + math.ceil(COTRAIN_PERIOD/2.)) % COTRAIN_PERIOD == 0):
+            if (en2 >= COTRAIN_START) and (((en2-1) + math.ceil(COTRAIN_PERIOD/2.)) % COTRAIN_PERIOD == 0):
                 print('Cotrain business after model2')
                 # If enough iters, move confident predictions to dataset 1
                 (win_inds, win_ys, win_probs) = epoch2['win']
