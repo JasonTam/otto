@@ -215,46 +215,13 @@ def create_iter_functions(
     )
 
 
-
 def unique_hist(x):
     y = np.bincount(x)
     ii = np.nonzero(y)[0]
     return zip(ii, y[ii])
 
 
-def train(iter_funcs, dataset1, batch_size=BATCH_SIZE):
-    num_batches_train = dataset1['num_examples_train'] // batch_size
-    num_batches_valid = dataset1['num_examples_valid'] // batch_size
-
-    for epoch in itertools.count(1):
-        # TRAIN PHASE
-        batch_train_losses = []
-        for b in range(num_batches_train):
-            batch_train_loss = iter_funcs['train'](b)
-            batch_train_losses.append(batch_train_loss)
-
-        avg_train_loss = np.mean(batch_train_losses)
-
-        # VALIDATION PHASE
-        batch_valid_losses = []
-        batch_valid_accuracies = []
-        for b in range(num_batches_valid):
-            batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](b)
-            batch_valid_losses.append(batch_valid_loss)
-            batch_valid_accuracies.append(batch_valid_accuracy)
-
-        avg_valid_loss = np.mean(batch_valid_losses)
-        avg_valid_accuracy = np.mean(batch_valid_accuracies)
-
-        yield {
-            'number': epoch,
-            'train_loss': avg_train_loss,
-            'valid_loss': avg_valid_loss,
-            'valid_accuracy': avg_valid_accuracy,
-        }
-
-
-def cotrain(output_layer, 
+def cotrain(iter_funcs, 
             model_num,
             batch_size=BATCH_SIZE):
 
@@ -267,7 +234,7 @@ def cotrain(output_layer,
 
 
         # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
-        iter_funcs = create_iter_functions(output_layer, model_num=model_num)
+        ### iter_funcs = create_iter_functions(output_layer, model_num=model_num)
 
         # TRAIN PHASE
         batch_train_losses = []
@@ -317,51 +284,6 @@ def cotrain(output_layer,
         }
 
 
-
-def self_update_dataset(dataset, win_inds, win_ys, win_probs, prob_thresh=0.999):
-    """
-    win_inds: index with respect to each batch (each ind < batch_size)
-    win_ys: predicted class of winners
-    win_probs: probability (confidence) of winners
-    prob_thresh: confidence threshold to consider movement of winners
-    """
-    
-    inds_abs = win_inds + np.arange(len(win_inds)) * BATCH_SIZE
-    inds_abs = inds_abs[win_probs > prob_thresh]
-
-    # Add winners to training set
-    X_win = dataset1['X_test'].get_value()[inds_abs, :]
-    X_train_new = np.concatenate([dataset['X_train'].get_value(), X_win])
-    y_train_new = np.concatenate([dataset['y_train'].owner.inputs[0].get_value(), win_ys])
-    rng_state = np.random.get_state()
-    np.random.shuffle(X_train_new)
-    np.random.set_state(rng_state)
-    np.random.shuffle(y_train_new)
-    dataset['X_train'] = theano.shared(lasagne.utils.floatX(X_train_new))
-    dataset['y_train'] = T.cast(theano.shared(y_train_new), 'int32')
-
-
-    # Remove winners from testing set 
-    X_test_new = np.delete(dataset['X_test'].get_value(), inds_abs, axis=0)
-    y_test_new = np.delete(dataset['y_test'].owner.inputs[0].get_value(), inds_abs)
-    dataset['X_test'] = theano.shared(lasagne.utils.floatX(X_test_new))
-    dataset['y_test'] = T.cast(theano.shared(y_test_new), 'int32')
-
-
-    # Updating shapes
-    dataset['num_examples_train'] = X_train_new.shape[0]
-    dataset['num_examples_test'] = X_test_new.shape[0]
-
-    # print('inds: ' + inds_abs)
-    print('####### COTRAIN SAMPLE MOVEMENT #######')
-    print('# samples moved: ' + str(len(inds_abs)))
-    print('X_train shape: ' + str(X_train_new.shape))
-    print('X_test shape: ' + str(X_test_new.shape))
-    print('#######################################')
-
-    return dataset
-
-
 def shuffle_unison(a, b, verbose=False):
     """ Shuffles same-length arrays `a` and `b` in unison"""
     if verbose:
@@ -381,6 +303,7 @@ def co_update_dataset(dataset, model_num,
                       win_inds, win_ys, win_probs, prob_thresh):                    
     """
     dataset: contains the data for model 1 and model 2
+        (mutable and will be modified in-place)
     model_num: the model number for the SOURCE
     The following are associated with the SOURCE dataset:
         win_inds: index with respect to each batch (each ind < batch_size)
@@ -425,7 +348,7 @@ def co_update_dataset(dataset, model_num,
     else:
         print('Winners not confident enough')
 
-    return dataset
+    # return dataset
 
 
 
@@ -472,12 +395,14 @@ if __name__ == '__main__':
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
     # iter_funcs = create_iter_functions(dataset1, output_layer)
+    iter_funcs1 = create_iter_functions(output_layer, model_num=1)
+    iter_funcs2 = create_iter_functions(output_layer, model_num=2)
 
     print("Starting training...")
     now = time.time()
     try:
-        net_iter1 = cotrain(copy.deepcopy(output_layer), model_num=1)
-        net_iter2 = cotrain(copy.deepcopy(output_layer), model_num=2)
+        net_iter1 = cotrain(iter_funcs1, model_num=1)
+        net_iter2 = cotrain(iter_funcs2, model_num=2)
         for ii in range(num_epochs):
             epoch1 = net_iter1.next()
 
@@ -487,7 +412,7 @@ if __name__ == '__main__':
                 print('Cotrain business after model1')
                 # If enough iters, move confident predictions to dataset 2
                 (win_inds, win_ys, win_probs) = epoch1['win']
-                dataset = co_update_dataset(
+                co_update_dataset(
                                 dataset, 1,
                                 win_inds, win_ys, win_probs, prob_thresh=0.99)
             
@@ -500,7 +425,7 @@ if __name__ == '__main__':
                 print('Cotrain business after model2')
                 # If enough iters, move confident predictions to dataset 1
                 (win_inds, win_ys, win_probs) = epoch2['win']
-                dataset = co_update_dataset(
+                co_update_dataset(
                                 dataset, 2,
                                 win_inds, win_ys, win_probs, prob_thresh=0.99)
 
