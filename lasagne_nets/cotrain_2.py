@@ -114,7 +114,8 @@ def load_data():
     X_test, y_test = data[2]
 
     fn_x = lambda x, name=None: theano.shared(lasagne.utils.floatX(x), name=name)
-    fn_y = lambda y, name=None: T.cast(theano.shared(y, name=name), 'int32')
+    #fn_y = lambda y, name=None: T.cast(theano.shared(y, name=name), 'int32')
+    fn_y = lambda y, name=None: theano.shared(y.astype(np.int32), name=name)
 
     return dict(
         X_train1=fn_x(X_train, 'X_train1'),  # For model 1
@@ -237,7 +238,7 @@ def cotrain(iter_funcs,
             batch_size_train=BATCH_SIZE_TRAIN,
             batch_size_val=BATCH_SIZE_VAL,
             batch_size_test=BATCH_SIZE_TEST,
-            ):
+            verbose=True):
             # batch_size=BATCH_SIZE):
 
     mn = str(model_num)
@@ -246,7 +247,8 @@ def cotrain(iter_funcs,
         num_batches_train = dataset['num_examples_train'+mn] // batch_size_train
         num_batches_valid = dataset['num_examples_valid'] // batch_size_val
         num_batches_test = dataset['num_examples_test'] // batch_size_test
-        print('>>>>>>>>>>' + str(num_batches_train))
+        if verbose:
+            print('# Training batches: ' + str(num_batches_train))
 
         # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
         ### iter_funcs = create_iter_functions(output_layer, model_num=model_num)
@@ -254,7 +256,6 @@ def cotrain(iter_funcs,
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
-            print('<<<<' + str(b))
             """
             batch_slice_train = slice(b * batch_size_train, (b + 1) * batch_size_train)
             X_batch = dataset['X_train'+mn].get_value()[batch_slice_train]
@@ -330,7 +331,7 @@ def shuffle_unison(a, b, verbose=False):
         print('y shape: ' + str(b.shape))
         print(b)
     c = np.c_[a.reshape(len(a), -1), b.reshape(len(b), -1)]
-    np.random.shuffle(c)
+    #np.random.shuffle(c)
     return c[:, :a.size//len(a)].reshape(a.shape), c[:, a.size//len(a):].reshape(b.shape)
 
     #rng_state = np.random.get_state()
@@ -363,18 +364,18 @@ def co_update_dataset(dataset, model_num,
         X_win = dataset['X_test'].get_value()[inds_abs, :]
         y_win = win_ys[y_win_inds]
         X_train_new_dst = np.concatenate([dataset['X_train'+dst_n].get_value(), X_win])
-        y_train_new_dst = np.concatenate([dataset['y_train'+dst_n].owner.inputs[0].get_value(), y_win])
+        y_train_new_dst = np.concatenate([dataset['y_train'+dst_n].get_value(), y_win])
         
         X_train_new_dst, y_train_new_dst = shuffle_unison(X_train_new_dst, y_train_new_dst)
         dataset['X_train'+dst_n].set_value(lasagne.utils.floatX(X_train_new_dst))
-        dataset['y_train'+dst_n] = T.cast(theano.shared(y_train_new_dst), 'int32')
+        dataset['y_train'+dst_n].set_value(y_train_new_dst.astype(np.int32))
 
 
         # Remove winners from BOTH testing sets 
         X_test_new = np.delete(dataset['X_test'].get_value(), inds_abs, axis=0)
-        y_test_new = np.delete(dataset['y_test'].owner.inputs[0].get_value(), inds_abs)
+        #y_test_new = np.delete(dataset['y_test'].get_value(), inds_abs)
         dataset['X_test'].set_value(lasagne.utils.floatX(X_test_new))
-        dataset['y_test'] = T.cast(theano.shared(y_test_new), 'int32')
+        #dataset['y_test'].set_value(y_test_new.astype(np.int32))
 
         # Updating shapes
         dataset['num_examples_train'+dst_n] = X_train_new_dst.shape[0]
