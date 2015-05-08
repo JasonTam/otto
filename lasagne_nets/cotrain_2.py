@@ -330,6 +330,7 @@ def shuffle_unison(a, b, verbose=False):
         print('y shape: ' + str(b.shape))
         print(b)
     c = np.c_[a.reshape(len(a), -1), b.reshape(len(b), -1)]
+    np.random.shuffle(c)
     return c[:, :a.size//len(a)].reshape(a.shape), c[:, a.size//len(a):].reshape(b.shape)
 
     #rng_state = np.random.get_state()
