@@ -232,7 +232,6 @@ def cotrain(iter_funcs,
         num_batches_valid = dataset['num_examples_valid'] // batch_size
         num_batches_test = dataset['num_examples_test'] // batch_size
 
-
         # REBUILD ITERFUNCS EVERY SINGLE GODAMNED TIME
         ### iter_funcs = create_iter_functions(output_layer, model_num=model_num)
 
@@ -395,8 +394,8 @@ if __name__ == '__main__':
         num_hidden_units=NUM_HIDDEN_UNITS,
     )
     # iter_funcs = create_iter_functions(dataset1, output_layer)
-    iter_funcs1 = create_iter_functions(output_layer, model_num=1)
-    iter_funcs2 = create_iter_functions(output_layer, model_num=2)
+    iter_funcs1 = create_iter_functions(copy.deepcopy(output_layer), model_num=1)
+    iter_funcs2 = create_iter_functions(copy.deepcopy(output_layer), model_num=2)
 
     print("Starting training...")
     now = time.time()
@@ -412,9 +411,9 @@ if __name__ == '__main__':
                 print('Cotrain business after model1')
                 # If enough iters, move confident predictions to dataset 2
                 (win_inds, win_ys, win_probs) = epoch1['win']
-                co_update_dataset(
-                                dataset, 1,
-                                win_inds, win_ys, win_probs, prob_thresh=0.99)
+                co_update_dataset(dataset, 1,
+                                  win_inds, win_ys, win_probs, 
+                                  prob_thresh=0.99)
             
 
             epoch2 = net_iter2.next()
@@ -425,17 +424,17 @@ if __name__ == '__main__':
                 print('Cotrain business after model2')
                 # If enough iters, move confident predictions to dataset 1
                 (win_inds, win_ys, win_probs) = epoch2['win']
-                co_update_dataset(
-                                dataset, 2,
-                                win_inds, win_ys, win_probs, prob_thresh=0.99)
+                co_update_dataset(dataset, 2,
+                                  win_inds, win_ys, win_probs, 
+                                  prob_thresh=0.99)
 
             if log:
                 write_log(epoch1, './1.txt')
                 write_log(epoch2, './2.txt')
 
-
+            print_period = 1
             if verbose:
-                if (epoch1['number']-1) % 1 == 0:
+                if (epoch1['number']-1) % print_period == 0:
                     print('---MODEL1 STATS---')
                     disp_stats(epoch1)
                     print('---MODEL2 STATS---')
