@@ -97,15 +97,15 @@ from lasagne_nets import net_zoo
 NUM_EPOCHS = 10000
 # BATCH_SIZE = 1024
 # BATCH_SIZE = 2048
-BATCH_SIZE_TRAIN = 600
+BATCH_SIZE_TRAIN = 2048
 BATCH_SIZE_VAL = 2048
-BATCH_SIZE_TEST = 400
+BATCH_SIZE_TEST = 512
 NUM_HIDDEN_UNITS = 1024
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
 
-COTRAIN_START = 1  # Number of epochs to train before cotraining
-COTRAIN_PERIOD = 1   # The grace period (#epochs) to train without adding more cotrained samples
+COTRAIN_START = 20  # Number of epochs to train before cotraining
+COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data():
     data = _load_data()
@@ -183,9 +183,13 @@ def create_iter_functions(
 
     # Parameter updating
     all_params = lasagne.layers.get_all_params(output_layer)
-    updates_train = lasagne.updates.nesterov_momentum(
-        loss_train, all_params, learning_rate, momentum)
-    
+    #updates_train = lasagne.updates.nesterov_momentum(
+    #    loss_train, all_params, learning_rate, momentum)
+    #updates_train = lasagne.updates.rmsprop(
+    #    loss_train, all_params, learning_rate=learning_rate)    
+    updates_train = lasagne.updates.momentum(
+        loss_train, all_params, 
+        learning_rate=learning_rate, momentum=momentum)  
 
     iter_train = theano.function(
         [batch_index], loss_train,
@@ -331,7 +335,7 @@ def shuffle_unison(a, b, verbose=False):
         print('y shape: ' + str(b.shape))
         print(b)
     c = np.c_[a.reshape(len(a), -1), b.reshape(len(b), -1)]
-    #np.random.shuffle(c)
+    np.random.shuffle(c)
     return c[:, :a.size//len(a)].reshape(a.shape), c[:, a.size//len(a):].reshape(b.shape)
 
     #rng_state = np.random.get_state()
