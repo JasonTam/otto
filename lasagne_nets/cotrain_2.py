@@ -99,13 +99,14 @@ NUM_EPOCHS = 10000
 # BATCH_SIZE = 2048
 BATCH_SIZE_TRAIN = 2048
 BATCH_SIZE_VAL = 2048
-BATCH_SIZE_TEST = 512
+BATCH_SIZE_TEST = 256
 NUM_HIDDEN_UNITS = 1024
-LEARNING_RATE = 0.01
+# LEARNING_RATE = 0.01
+LEARNING_RATE = 0.5
 MOMENTUM = 0.9
 
 COTRAIN_START = 20  # Number of epochs to train before cotraining
-COTRAIN_PERIOD = 2   # The grace period (#epochs) to train without adding more cotrained samples
+COTRAIN_PERIOD = 1   # The grace period (#epochs) to train without adding more cotrained samples
 
 def load_data():
     data = _load_data()
@@ -126,6 +127,7 @@ def load_data():
         y_valid=fn_y(y_valid, 'y_valid'),
         X_test=fn_x(X_test, 'X_test'),
         y_test=fn_y(y_test, 'y_test'),
+        X_test_orig=fn_x(X_test, 'X_test_orig'),
         num_examples_train1=X_train.shape[0],  # For model 1
         num_examples_train2=X_train.shape[0],  # For model 2
         num_examples_valid=X_valid.shape[0],
@@ -187,9 +189,12 @@ def create_iter_functions(
     #    loss_train, all_params, learning_rate, momentum)
     #updates_train = lasagne.updates.rmsprop(
     #    loss_train, all_params, learning_rate=learning_rate)    
-    updates_train = lasagne.updates.momentum(
+    #updates_train = lasagne.updates.momentum(
+    #    loss_train, all_params, 
+    #    learning_rate=learning_rate, momentum=momentum)  
+    updates_train = lasagne.updates.adadelta(
         loss_train, all_params, 
-        learning_rate=learning_rate, momentum=momentum)  
+        learning_rate=learning_rate)  
 
     iter_train = theano.function(
         [batch_index], loss_train,
@@ -432,16 +437,43 @@ if __name__ == '__main__':
 
 
     print("Building model and compiling functions...")
-    net = net_zoo.build_vanilla(
-    #output_layer = net_zoo.build_maxout(
+    
+    net1 = net_zoo.build_vanilla(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
         num_hidden_units=NUM_HIDDEN_UNITS,
         batch_size=None,
+        drop_p=0.5,
     )
+    net2 = net_zoo.build_vanilla(
+        input_dim=dataset['input_dim'],
+        output_dim=dataset['output_dim'],
+        num_hidden_units=NUM_HIDDEN_UNITS,
+        batch_size=None,
+        drop_p=0.5,
+    )
+    """
+    net1 = net_zoo.build_maxout(
+        input_dim=dataset['input_dim'],
+        output_dim=dataset['output_dim'],
+        num_hidden_units=NUM_HIDDEN_UNITS,
+        batch_size=None,
+        ds=2, drop_p=0.5,
+    )
+    
+    net2 = net_zoo.build_maxout(
+        input_dim=dataset['input_dim'],
+        output_dim=dataset['output_dim'],
+        num_hidden_units=NUM_HIDDEN_UNITS,
+        batch_size=None,
+        ds=2, drop_p=0.5,
+    )
+    """
+    
+    
     # iter_funcs = create_iter_functions(dataset1, output_layer)
-    iter_funcs1 = create_iter_functions(copy.deepcopy(net), model_num=1)
-    iter_funcs2 = create_iter_functions(copy.deepcopy(net), model_num=2)
+    iter_funcs1 = create_iter_functions(net1, model_num=1)
+    iter_funcs2 = create_iter_functions(net2, model_num=2)
 
     print("Starting training...")
     now = time.time()
@@ -459,7 +491,7 @@ if __name__ == '__main__':
                 (win_inds, win_ys, win_probs) = epoch1['win']
                 co_update_dataset(dataset, 1,
                                   win_inds, win_ys, win_probs, 
-                                  prob_thresh=0.99)
+                                  prob_thresh=0.90)
             
 
             epoch2 = net_iter2.next()
@@ -472,7 +504,7 @@ if __name__ == '__main__':
                 (win_inds, win_ys, win_probs) = epoch2['win']
                 co_update_dataset(dataset, 2,
                                   win_inds, win_ys, win_probs, 
-                                  prob_thresh=0.99)
+                                  prob_thresh=0.90)
 
             if log:
                 write_log(epoch1, './1.txt')
@@ -497,8 +529,21 @@ if __name__ == '__main__':
         pass
 
     # return output_layer
-
-
+    X = T.matrix('x')
+    predictions1 = net1.get_output(X, deterministic=True)
+    predictions2 = net2.get_output(X, deterministic=True)
+    predict_fn1 = theano.function(
+        [], predictions1,
+        givens={
+            X: dataset['X_test_orig'],
+        },
+    )
+    predict_fn2 = theano.function(
+        [], predictions2,
+        givens={
+            X: dataset['X_test_orig'],
+        },
+    )
 
 
 
