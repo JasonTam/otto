@@ -7,15 +7,22 @@ def build_vanilla(input_dim, output_dim,
                   num_hidden_units, batch_size=None,
                   drop_p=0.5):
     
-    # non_lin_fn = lasagne.nonlinearities.rectify
-    non_lin_fn = lasagne.nonlinearities.LeakyRectify()
+    non_lin_fn = lasagne.nonlinearities.rectify
+    # non_lin_fn = lasagne.nonlinearities.LeakyRectify()
     # non_lin_fn = lasagne.nonlinearities.tanh
 
     l_in = lasagne.layers.InputLayer(
         shape=(batch_size, input_dim),
     )
+
+    l_in_drop = lasagne.layers.DropoutLayer(
+       l_in,
+       p=0.4,
+    )
+
+
     l_hidden1 = lasagne.layers.DenseLayer(
-        l_in,
+        l_in_drop,
         num_units=num_hidden_units,
         nonlinearity=non_lin_fn,
     )
@@ -69,8 +76,12 @@ def build_maxout(input_dim, output_dim,
     l_in = lasagne.layers.InputLayer(
         shape=(batch_size, input_dim),
     )
+    l_in_drop = lasagne.layers.DropoutLayer(
+       l_in,
+       p=0.4,
+    )
     
-    l1 = maxout(l_in, num_units=num_hidden_units, ds=ds)
+    l1 = maxout(l_in_drop, num_units=num_hidden_units, ds=ds)
 
     l1_drop = lasagne.layers.DropoutLayer(
         l1,

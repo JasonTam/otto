@@ -21,7 +21,7 @@ for ii, model_loss in enumerate(losses):
     plt.plot(epoch_n, val_loss, label='val loss '+str(ii), lw=2)
     plt.plot(epoch_n, train_loss, label='train loss'+str(ii), lw=2)
     plt.legend()
-    plt.ylim([0.3, 0.7])
+    plt.ylim([0.42, 0.52])
 plt.show()
 
 

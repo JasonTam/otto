@@ -63,7 +63,8 @@ import gzip
 
 def _load_data():
     # data = pickle.load(open(os.path.join(DATA_DIR, 'transformed_data.p'), 'rb'))
-    data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'log_data.pgz'), 'rb'))
+    #data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'log_data.pgz'), 'rb'))
+    data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'iden-log-anscombe_data.pgz'), 'rb'))
     return data
 
 
@@ -94,15 +95,16 @@ import theano.tensor as T
 import time
 from lasagne_nets import net_zoo
 
-NUM_EPOCHS = 10000
+NUM_EPOCHS = 2000
 # BATCH_SIZE = 1024
 # BATCH_SIZE = 2048
-BATCH_SIZE_TRAIN = 2048
+BATCH_SIZE_TRAIN = 4096
 BATCH_SIZE_VAL = 2048
-BATCH_SIZE_TEST = 256
+BATCH_SIZE_TEST = 512
 NUM_HIDDEN_UNITS = 1024
-# LEARNING_RATE = 0.01
-LEARNING_RATE = 0.5
+#LEARNING_RATE = 0.01
+#LEARNING_RATE = 1.0
+LEARNING_RATE = 0.75
 MOMENTUM = 0.9
 
 COTRAIN_START = 20  # Number of epochs to train before cotraining
@@ -185,16 +187,22 @@ def create_iter_functions(
 
     # Parameter updating
     all_params = lasagne.layers.get_all_params(output_layer)
-    #updates_train = lasagne.updates.nesterov_momentum(
-    #    loss_train, all_params, learning_rate, momentum)
-    #updates_train = lasagne.updates.rmsprop(
-    #    loss_train, all_params, learning_rate=learning_rate)    
-    #updates_train = lasagne.updates.momentum(
-    #    loss_train, all_params, 
-    #    learning_rate=learning_rate, momentum=momentum)  
-    updates_train = lasagne.updates.adadelta(
-        loss_train, all_params, 
-        learning_rate=learning_rate)  
+    
+    
+    if model_num == 1:
+        updates_train = lasagne.updates.adadelta(
+            loss_train, all_params, 
+            learning_rate=learning_rate,
+            rho=0.9,
+            )  
+    elif model_num == 2:
+        updates_train = lasagne.updates.adadelta(
+            loss_train, all_params, 
+            learning_rate=learning_rate)  
+
+
+
+
 
     iter_train = theano.function(
         [batch_index], loss_train,
@@ -445,6 +453,7 @@ if __name__ == '__main__':
         batch_size=None,
         drop_p=0.5,
     )
+    
     net2 = net_zoo.build_vanilla(
         input_dim=dataset['input_dim'],
         output_dim=dataset['output_dim'],
@@ -471,7 +480,6 @@ if __name__ == '__main__':
     """
     
     
-    # iter_funcs = create_iter_functions(dataset1, output_layer)
     iter_funcs1 = create_iter_functions(net1, model_num=1)
     iter_funcs2 = create_iter_functions(net2, model_num=2)
 
@@ -491,7 +499,7 @@ if __name__ == '__main__':
                 (win_inds, win_ys, win_probs) = epoch1['win']
                 co_update_dataset(dataset, 1,
                                   win_inds, win_ys, win_probs, 
-                                  prob_thresh=0.90)
+                                  prob_thresh=0.98)
             
 
             epoch2 = net_iter2.next()
@@ -504,13 +512,13 @@ if __name__ == '__main__':
                 (win_inds, win_ys, win_probs) = epoch2['win']
                 co_update_dataset(dataset, 2,
                                   win_inds, win_ys, win_probs, 
-                                  prob_thresh=0.90)
+                                  prob_thresh=0.98)
 
             if log:
                 write_log(epoch1, './1.txt')
                 write_log(epoch2, './2.txt')
 
-            print_period = 1
+            print_period = 5
             if verbose:
                 if (epoch1['number']-1) % print_period == 0:
                     print('---MODEL1 STATS---')
