@@ -28,7 +28,21 @@ class DenseTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
         return X.todense()
 
-
+    
+class InverseTformer(FitlessMixin):
+    def transform(self, X, y=None, **fit_params):
+        return 1. - 1./(X+1.)
+    
+    
+class AnscombeTformer(FitlessMixin):
+    def transform(self, X, y=None, **fit_params):
+        return np.sqrt(X+0.375)
+    
+    
+class BoxCoxTformer(FitlessMixin):
+    pass
+    
+    
 class LogTformer(FitlessMixin):
     def transform(self, X, y=None, **fit_params):
         return np.log(X + 1)

@@ -65,6 +65,7 @@ def _load_data():
     # data = pickle.load(open(os.path.join(DATA_DIR, 'transformed_data.p'), 'rb'))
     #data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'log_data.pgz'), 'rb'))
     data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'iden-log-anscombe_data.pgz'), 'rb'))
+    #data = pickle.load(gzip.open(os.path.join(DATA_DIR, 'iden-log-anscombe-inv_data.pgz'), 'rb'))
     return data
 
 
@@ -103,8 +104,8 @@ BATCH_SIZE_VAL = 2048
 BATCH_SIZE_TEST = 512
 NUM_HIDDEN_UNITS = 1024
 #LEARNING_RATE = 0.01
-#LEARNING_RATE = 1.0
-LEARNING_RATE = 0.75
+LEARNING_RATE = 1.0
+#LEARNING_RATE = 0.75
 MOMENTUM = 0.9
 
 COTRAIN_START = 20  # Number of epochs to train before cotraining
@@ -198,7 +199,8 @@ def create_iter_functions(
     elif model_num == 2:
         updates_train = lasagne.updates.adadelta(
             loss_train, all_params, 
-            learning_rate=learning_rate)  
+            learning_rate=learning_rate,
+            rho=0.9,)  
 
 
 
@@ -273,55 +275,42 @@ def cotrain(iter_funcs,
         # TRAIN PHASE
         batch_train_losses = []
         for b in range(num_batches_train):
-            """
-            batch_slice_train = slice(b * batch_size_train, (b + 1) * batch_size_train)
-            X_batch = dataset['X_train'+mn].get_value()[batch_slice_train]
-            y_batch = dataset['y_train'+mn][batch_slice_train].eval()
-            batch_train_loss = iter_funcs['train'](X_batch, y_batch)
-            """
             batch_train_loss = iter_funcs['train'](b)
             batch_train_losses.append(batch_train_loss)
 
         avg_train_loss = np.mean(batch_train_losses)
 
         # COTRAIN PHASE
-        win_inds = []
-        win_xs = []
-        win_ys = []
-        win_probs = []
-        for b in range(num_batches_test):
-            """
-            batch_slice_test = slice(b * batch_size_test, (b + 1) * batch_size_test)
-            X_batch = dataset['X_test'].get_value()[batch_slice_test]
-            y_batch = dataset['y_test'][batch_slice_test].eval()
-            win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](X_batch)
-            """
+        # (don't calculate this if we dont need to)
+        if epoch >= COTRAIN_START:
+            win_inds = []
+            win_xs = []
+            win_ys = []
+            win_probs = []
+            for b in range(num_batches_test):
+                win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](b)
+                
+                win_xs.append(win_x)
+                win_ys.append(win_y)
+                win_inds.append(win_ind)
+                win_probs.append(win_prob)
+            win_inds = np.array(win_inds)
+            win_xs = np.array(win_xs)
+            win_ys = np.array(win_ys)
+            win_class_hist = unique_hist(win_ys)
+            win_probs = np.array(win_probs)
+            win_prob_avg = win_probs.mean()
             
-            win_ind, win_x, win_y, win_prob = iter_funcs['cotrain'](b)
-            
-            win_xs.append(win_x)
-            win_ys.append(win_y)
-            win_inds.append(win_ind)
-            win_probs.append(win_prob)
-        win_inds = np.array(win_inds)
-        win_xs = np.array(win_xs)
-        win_ys = np.array(win_ys)
-        win_class_hist = unique_hist(win_ys)
-        win_probs = np.array(win_probs)
-        win_prob_avg = win_probs.mean()
-
+            win_vals = (win_inds, win_ys, win_probs)
+            win_stats = (win_class_hist, win_prob_avg)
+        else:
+            win_vals = None
+            win_stats = None
 
         # VALIDATION PHASE
         batch_valid_losses = []
         batch_valid_accuracies = []
-        for b in range(num_batches_valid):
-            """
-            batch_slice_val = slice(b * batch_size_val, (b + 1) * batch_size_val)
-            X_batch = dataset['X_valid'].get_value()[batch_slice_val]
-            y_batch = dataset['y_valid'][batch_slice_val].eval()
-            batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](X_batch, y_batch)
-            """
-            
+        for b in range(num_batches_valid):          
             batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](b)
             
             batch_valid_losses.append(batch_valid_loss)
@@ -335,8 +324,8 @@ def cotrain(iter_funcs,
             'train_loss': avg_train_loss,
             'valid_loss': avg_valid_loss,
             'valid_accuracy': avg_valid_accuracy,
-            'win': (win_inds, win_ys, win_probs),
-            'win_stats': (win_class_hist, win_prob_avg),
+            'win': win_vals,
+            'win_stats': win_stats,
         }
 
 
